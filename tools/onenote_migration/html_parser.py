@@ -110,6 +110,46 @@ class OneNoteHTMLParser:
             "paragraph": {"rich_text": rich_text}
         }
 
+    def _split_into_multiple_paragraphs(self, rich_text: List[Dict[str, Any]]) -> None:
+        """Lange rich_text-Arrays in mehrere Paragraph-Blöcke aufteilen."""
+        current_block = []
+        current_length = 0
+        
+        for rt in rich_text:
+            content = rt.get("text", {}).get("content", "")
+            content_length = len(content)
+            
+            # Wenn dieses Element allein schon zu groß ist, teile es
+            if content_length > 2000:
+                # Speichere aktuellen Block falls vorhanden
+                if current_block:
+                    self.blocks.append(self._create_paragraph(current_block))
+                    current_block = []
+                    current_length = 0
+                
+                # Teile großes Element in Chunks
+                for i in range(0, content_length, 2000):
+                    chunk = content[i:i+2000]
+                    chunk_rt = {"type": "text", "text": {"content": chunk}}
+                    self.blocks.append(self._create_paragraph([chunk_rt]))
+            
+            # Wenn Hinzufügen dieses Elements die Grenze überschreitet
+            elif current_length + content_length > 2000:
+                # Speichere aktuellen Block
+                if current_block:
+                    self.blocks.append(self._create_paragraph(current_block))
+                # Starte neuen Block mit diesem Element
+                current_block = [rt]
+                current_length = content_length
+            else:
+                # Füge zu aktuellem Block hinzu
+                current_block.append(rt)
+                current_length += content_length
+        
+        # Speichere letzten Block
+        if current_block:
+            self.blocks.append(self._create_paragraph(current_block))
+
     def _add_heading(self, level: int, element: Tag) -> None:
         """Überschrift hinzufügen."""
         heading_type = f"heading_{level}"
@@ -179,7 +219,17 @@ class OneNoteHTMLParser:
                 }
             })
         elif element.get_text(strip=True):
-            self.blocks.append(self._create_paragraph(self._build_rich_text(element)))
+            rich_text = self._build_rich_text(element)
+            
+            # Prüfe Gesamt-Länge aller rich_text-Elemente
+            total_length = sum(len(rt.get("text", {}).get("content", "")) for rt in rich_text)
+            
+            if total_length <= 2000:
+                # Normal: Ein Block
+                self.blocks.append(self._create_paragraph(rich_text))
+            else:
+                # Zu lang: In mehrere Blöcke aufteilen
+                self._split_into_multiple_paragraphs(rich_text)
 
     def _is_todo_item(self, element: Tag) -> Tuple[bool, bool]:
         """Prüfen ob Element ein To-Do ist."""
