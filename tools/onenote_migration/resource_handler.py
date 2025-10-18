@@ -270,10 +270,15 @@ class ResourceHandler:
             href = str(link.get("href", ""))
             text = link.get_text(strip=True)
             
-            # Prüfen ob Datei-Link (keine internen Links)
-            if href and not href.startswith("#") and not href.startswith("http://") and not href.startswith("https://"):
-                files.append((href, text))
-            elif href and any(ext in href.lower() for ext in [".pdf", ".docx", ".xlsx", ".pptx", ".zip"]):
-                files.append((href, text))
+            # Ignoriere: mailto, tel, #-Links
+            if not href or href.startswith("mailto:") or href.startswith("tel:") or href.startswith("#"):
+                continue
+            
+            # Datei-Extensions prüfen
+            if any(ext in href.lower() for ext in [".pdf", ".docx", ".xlsx", ".pptx", ".zip", ".jpg", ".png", ".gif"]):
+                files.append((href, text or "Download"))
+            # Oder externe URLs
+            elif href.startswith("http://") or href.startswith("https://"):
+                files.append((href, text or "Download"))
         
         return files
