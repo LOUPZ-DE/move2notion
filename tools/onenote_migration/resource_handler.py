@@ -199,12 +199,26 @@ class ResourceHandler:
         Returns:
             Upload-ID oder None bei Fehler
         """
+        # Notion-kompatible Extensions
+        SUPPORTED_EXTENSIONS = {
+            '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+            '.txt', '.csv', '.zip', '.rar', '7z',
+            '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.svg', '.webp',
+            '.mp3', '.mp4', '.wav', '.webm', '.mov',
+            '.json', '.xml', '.html'
+        }
+        
         try:
+            filename = os.path.basename(file_path)
+            file_ext = os.path.splitext(filename)[1].lower()
+            
+            # Prüfe ob Extension unterstützt ist
+            if file_ext not in SUPPORTED_EXTENSIONS:
+                print(f"[⚠] Extension nicht unterstützt: {filename} ({file_ext})")
+                return None
+            
             with open(file_path, 'rb') as f:
                 data = f.read()
-            
-            # Dateiname aus Pfad extrahieren
-            filename = os.path.basename(file_path)
             
             # Content-Type bestimmen
             import mimetypes
@@ -214,14 +228,14 @@ class ResourceHandler:
             upload_id = self.notion.upload_file(filename, data, content_type)
             
             if upload_id:
-                print(f"[✅] Datei hochgeladen: {filename} (ID: {upload_id})")
+                print(f"[✅] Datei hochgeladen: {filename}")
             else:
                 print(f"[⚠] Upload fehlgeschlagen: {filename}")
             
             return upload_id
 
         except Exception as e:
-            print(f"[⚠] Upload-Fehler ({file_path}): {e}")
+            print(f"[⚠] Upload-Fehler: {e}")
             return None
 
     def _generate_filename(self, url: str) -> str:
