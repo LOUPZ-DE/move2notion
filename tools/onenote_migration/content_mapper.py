@@ -78,7 +78,7 @@ class ContentMapper:
 
             # 5. Notion-Page erstellen
             notion_page_id = self.notion.create_page(
-                database_id=database_id,
+                parent_id=database_id,
                 properties=properties
             )
 
