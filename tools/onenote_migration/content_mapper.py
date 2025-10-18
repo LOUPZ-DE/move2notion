@@ -10,14 +10,13 @@ Dieses Modul koordiniert:
 """
 from typing import List, Dict, Any, Optional, Tuple
 
-from .html_parser import parse_onenote_html
-from .resource_handler import ResourceHandler
+from .html_parser import html_to_blocks_and_tables, append_table
 
 
 class ContentMapper:
     """Orchestriert die Konvertierung von OneNote-Content zu Notion."""
 
-    def __init__(self, notion_client, ms_graph_client, site_id: str, resource_handler: Optional[ResourceHandler] = None):
+    def __init__(self, notion_client, ms_graph_client, site_id: str):
         """
         Initialisierung.
         
@@ -25,18 +24,10 @@ class ContentMapper:
             notion_client: NotionClient-Instanz
             ms_graph_client: MSGraphClient-Instanz
             site_id: SharePoint-Site-ID
-            resource_handler: Optionaler ResourceHandler
         """
         self.notion = notion_client
         self.ms_graph = ms_graph_client
         self.site_id = site_id
-        
-        # ResourceHandler mit site_id initialisieren
-        if resource_handler:
-            self.resource_handler = resource_handler
-        else:
-            self.resource_handler = ResourceHandler(notion_client, ms_graph_client)
-            self.resource_handler.site_id = site_id  # Site-ID setzen
 
     def map_page_to_notion(
         self,
@@ -70,8 +61,13 @@ class ContentMapper:
                 print(f"[⚠] Kein Content für Seite: {page_title}")
                 return None
 
-            # 3. HTML parsen
-            blocks, tables = parse_onenote_html(html_content)
+            # 3. HTML parsen - MIT INLINE BILDERN!
+            blocks, tables = html_to_blocks_and_tables(
+                html_content,
+                self.site_id,
+                self.ms_graph,
+                self.notion
+            )
 
             # 4. Web-URL extrahieren
             web_url = onenote_page.get("links", {}).get("oneNoteWebUrl", {}).get("href")
@@ -111,20 +107,16 @@ class ContentMapper:
                     print(f"[❌] Page-Erstellung fehlgeschlagen: {page_title}")
                     return None
 
-            # 7. Assets verarbeiten (Bilder & Dateien)
-            asset_blocks = self._process_assets(html_content, notion_page_id)
-            
-            # 8. Blöcke hinzufügen (Content + Assets)
-            all_blocks = blocks + asset_blocks
-            if all_blocks:
+            # 7. Blöcke hinzufügen (Bilder sind bereits INLINE!)
+            if blocks:
                 # FAIL-SAFE: Validiere alle Blöcke vor dem Senden
-                validated_blocks = self._validate_blocks(all_blocks)
+                validated_blocks = self._validate_blocks(blocks)
                 self.notion.append_blocks(notion_page_id, validated_blocks)
 
-            # 9. Tabellen hinzufügen
+            # 8. Tabellen als echte Table-Blöcke hinzufügen
             if tables:
                 for table in tables:
-                    self._add_table_to_page(notion_page_id, table)
+                    append_table(self.notion, notion_page_id, table)
 
             print(f"[✅] Page importiert: {page_title}")
             return notion_page_id
@@ -133,44 +125,7 @@ class ContentMapper:
             print(f"[❌] Page-Import fehlgeschlagen ({onenote_page.get('title', 'Unknown')}): {e}")
             return None
 
-    def _process_assets(self, html_content: str, notion_page_id: str) -> List[Dict[str, Any]]:
-        """
-        Assets (Bilder & Dateien) aus HTML verarbeiten.
-        
-        Args:
-            html_content: HTML-String der OneNote-Seite
-            notion_page_id: Ziel-Notion-Page-ID
-            
-        Returns:
-            Liste von Notion-Asset-Blöcken
-        """
-        asset_blocks = []
-        
-        try:
-            # Bilder verarbeiten
-            images = self.resource_handler.extract_images_from_html(html_content)
-            for img_url in images:
-                try:
-                    img_block = self.resource_handler.process_image(img_url, notion_page_id)
-                    if img_block:
-                        asset_blocks.append(img_block)
-                except Exception as e:
-                    print(f"[⚠] Bild-Verarbeitung fehlgeschlagen ({img_url}): {e}")
-            
-            # Dateien verarbeiten
-            files = self.resource_handler.extract_files_from_html(html_content)
-            for file_url, file_name in files:
-                try:
-                    file_block = self.resource_handler.process_file(file_url, file_name, notion_page_id)
-                    if file_block:
-                        asset_blocks.append(file_block)
-                except Exception as e:
-                    print(f"[⚠] Datei-Verarbeitung fehlgeschlagen ({file_name}): {e}")
-        
-        except Exception as e:
-            print(f"[⚠] Asset-Verarbeitung fehlgeschlagen: {e}")
-        
-        return asset_blocks
+    # _process_assets wurde entfernt - Bilder werden jetzt inline in html_to_blocks_and_tables verarbeitet!
 
     def _fetch_page_content(self, page_id: str) -> Optional[str]:
         """OneNote-Page-Content laden."""

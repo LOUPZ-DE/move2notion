@@ -1,299 +1,398 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-HTML-Parser für OneNote-zu-Notion Migration.
+OneNote HTML Parser - basiert auf v0.8.4 (bewährt)
 
-Dieses Modul behandelt:
-- OneNote-HTML-Parsing
-- Konvertierung in Notion-Blöcke
-- To-Do-Erkennung
-- Rich-Text-Generierung
+Parst OneNote HTML und erstellt Notion-Blöcke.
+Bilder werden INLINE verarbeitet während des Parsens.
 """
 import re
-from typing import List, Dict, Any, Tuple
-from bs4 import BeautifulSoup, Tag
-from bs4.element import NavigableString
+import time
+import requests
+from typing import List, Dict, Any, Tuple, Optional
+from bs4 import BeautifulSoup, NavigableString, Tag
 
 
-class OneNoteHTMLParser:
-    """Parst OneNote-HTML und konvertiert zu Notion-Blöcken."""
+def build_rich_text(node: Tag) -> List[Dict[str, Any]]:
+    """Rich-Text aus HTML-Element erstellen."""
+    parts: List[Dict[str, Any]] = []
+    
+    def push_text(text: str):
+        if text:
+            parts.append({"type": "text", "text": {"content": text}})
+    
+    for child in node.children:
+        if isinstance(child, NavigableString):
+            push_text(str(child))
+        elif isinstance(child, Tag) and child.name.lower() == "a":
+            href = child.get("href")
+            txt = child.get_text()
+            parts.append({"type": "text", "text": {"content": txt, "link": {"url": href}}})
+        elif isinstance(child, Tag):
+            parts.extend(build_rich_text(child))
+    
+    # Notion-Limit: 2000 Zeichen pro rich_text Element
+    for p in parts:
+        if p["type"] == "text" and len(p["text"]["content"]) > 2000:
+            p["text"]["content"] = p["text"]["content"][:2000]
+    
+    return parts or [{"type": "text", "text": {"content": ""}}]
 
-    # Checkbox-Unicode-Zeichen
-    CHECKBOX_TRUE = ("☑", "✅", "✓", "✔")
-    CHECKBOX_FALSE = ("☐", "⬜", "☒", "◻")
 
-    def __init__(self):
-        self.blocks: List[Dict[str, Any]] = []
-        self.tables: List[List[List[str]]] = []
-
-    def parse(self, html: str) -> Tuple[List[Dict[str, Any]], List[List[List[str]]]]:
-        """HTML parsen und Blöcke + Tabellen extrahieren."""
-        self.blocks = []
-        self.tables = []
-
-        soup = BeautifulSoup(html, "html.parser")
-        body = soup.body or soup
-
-        self._process_element(body)
-
-        # Fallback: Wenn keine Blöcke gefunden wurden, Text extrahieren
-        if not self.blocks and soup.get_text(strip=True):
-            text = soup.get_text(' ', strip=True)
-            self.blocks.append(self._create_paragraph([{"type": "text", "text": {"content": text}}]))
-
-        return self.blocks[:150], self.tables  # Notion-Limit: 150 Blöcke
-
-    def _process_element(self, element: Tag) -> None:
-        """Element rekursiv verarbeiten."""
-        for child in element.children:
-            if not isinstance(child, Tag):
-                continue
-
-            name = child.name.lower()
-
-            if name in ("h1", "h2", "h3"):
-                self._add_heading(int(name[1]), child)
-            elif name == "blockquote":
-                self._add_quote(child)
-            elif name == "pre":
-                self._add_code(child)
-            elif name in ("ul", "ol"):
-                self._add_list(child, ordered=(name == "ol"))
-            elif name == "p":
-                self._add_paragraph_or_todo(child)
-            elif name == "table":
-                self._add_table(child)
-
-    def _build_rich_text(self, element: Tag) -> List[Dict[str, Any]]:
-        """Rich-Text aus HTML-Element erstellen."""
-        parts: List[Dict[str, Any]] = []
-
-        for child in element.children:
-            if isinstance(child, NavigableString):
-                text = str(child).strip()
-                if text:
-                    # Teile sofort wenn zu lang
-                    if len(text) > 2000:
-                        for i in range(0, len(text), 2000):
-                            chunk = text[i:i+2000]
-                            parts.append({"type": "text", "text": {"content": chunk}})
-                    else:
-                        parts.append({"type": "text", "text": {"content": text}})
-            elif isinstance(child, Tag):
-                if child.name.lower() == "a":
-                    href = child.get("href", "")
-                    text = child.get_text()
-                    # Teile Link-Text wenn nötig
-                    if len(text) > 2000:
-                        for i in range(0, len(text), 2000):
-                            chunk = text[i:i+2000]
-                            parts.append({"type": "text", "text": {"content": chunk, "link": {"url": href}}})
-                    else:
-                        parts.append({"type": "text", "text": {"content": text, "link": {"url": href}}})
-                else:
-                    # Rekursiv für verschachtelte Tags
-                    parts.extend(self._build_rich_text(child))
-
-        # Finale Validierung: Stelle sicher, dass KEIN Element > 2000 ist
-        result = []
-        for part in parts:
-            if part.get("type") == "text":
-                content = part.get("text", {}).get("content", "")
-                if len(content) > 2000:
-                    # Falls immer noch zu lang, nochmal aufteilen
-                    link = part.get("text", {}).get("link")
-                    for i in range(0, len(content), 2000):
-                        chunk = content[i:i+2000]
-                        if link:
-                            result.append({"type": "text", "text": {"content": chunk, "link": link}})
-                        else:
-                            result.append({"type": "text", "text": {"content": chunk}})
-                else:
-                    result.append(part)
-            else:
-                result.append(part)
-
-        return result or [{"type": "text", "text": {"content": ""}}]
-
-    def _create_paragraph(self, rich_text: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Paragraph-Block erstellen."""
-        return {
+def html_to_blocks_and_tables(
+    html: str,
+    site_id: str,
+    ms_graph_client,
+    notion_client
+) -> Tuple[List[Dict[str, Any]], List[List[List[str]]]]:
+    """
+    OneNote HTML zu Notion-Blöcken konvertieren.
+    
+    WICHTIG: Bilder werden INLINE während des Parsens verarbeitet!
+    
+    Args:
+        html: OneNote HTML-Content
+        site_id: SharePoint Site-ID
+        ms_graph_client: MSGraphClient für Resource-Downloads
+        notion_client: NotionClient für Uploads
+        
+    Returns:
+        (blocks, tables) - Notion-Blöcke und Tabellen
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    blocks: List[Dict[str, Any]] = []
+    tables: List[List[List[str]]] = []
+    
+    # Helper-Funktionen für Block-Erstellung
+    def add_paragraph_rich(el):
+        blocks.append({
             "object": "block",
             "type": "paragraph",
-            "paragraph": {"rich_text": rich_text}
-        }
-
-    def _split_into_multiple_paragraphs(self, rich_text: List[Dict[str, Any]]) -> None:
-        """Lange rich_text-Arrays in mehrere Paragraph-Blöcke aufteilen."""
-        current_block = []
-        current_length = 0
-        
-        for rt in rich_text:
-            content = rt.get("text", {}).get("content", "")
-            content_length = len(content)
-            
-            # Wenn dieses Element allein schon zu groß ist, teile es
-            if content_length > 2000:
-                # Speichere aktuellen Block falls vorhanden
-                if current_block:
-                    self.blocks.append(self._create_paragraph(current_block))
-                    current_block = []
-                    current_length = 0
-                
-                # Teile großes Element in Chunks
-                for i in range(0, content_length, 2000):
-                    chunk = content[i:i+2000]
-                    chunk_rt = {"type": "text", "text": {"content": chunk}}
-                    self.blocks.append(self._create_paragraph([chunk_rt]))
-            
-            # Wenn Hinzufügen dieses Elements die Grenze überschreitet
-            elif current_length + content_length > 2000:
-                # Speichere aktuellen Block
-                if current_block:
-                    self.blocks.append(self._create_paragraph(current_block))
-                # Starte neuen Block mit diesem Element
-                current_block = [rt]
-                current_length = content_length
-            else:
-                # Füge zu aktuellem Block hinzu
-                current_block.append(rt)
-                current_length += content_length
-        
-        # Speichere letzten Block
-        if current_block:
-            self.blocks.append(self._create_paragraph(current_block))
-
-    def _add_heading(self, level: int, element: Tag) -> None:
-        """Überschrift hinzufügen."""
-        heading_type = f"heading_{level}"
-        self.blocks.append({
-            "object": "block",
-            "type": heading_type,
-            heading_type: {"rich_text": self._build_rich_text(element)}
+            "paragraph": {"rich_text": build_rich_text(el)}
         })
-
-    def _add_quote(self, element: Tag) -> None:
-        """Zitat hinzufügen."""
-        self.blocks.append({
+    
+    def add_heading(level, el):
+        k = f"heading_{level}"
+        blocks.append({
+            "object": "block",
+            "type": k,
+            k: {"rich_text": build_rich_text(el)}
+        })
+    
+    def add_todo(el, checked=False):
+        blocks.append({
+            "object": "block",
+            "type": "to_do",
+            "to_do": {"rich_text": build_rich_text(el), "checked": checked}
+        })
+    
+    def add_quote(el):
+        blocks.append({
             "object": "block",
             "type": "quote",
-            "quote": {"rich_text": self._build_rich_text(element)}
+            "quote": {"rich_text": build_rich_text(el)}
         })
-
-    def _add_code(self, element: Tag) -> None:
-        """Code-Block hinzufügen."""
-        code_el = element.find("code")
-        text = code_el.get_text() if code_el else element.get_text()
-        self.blocks.append({
+    
+    def add_code(text):
+        blocks.append({
             "object": "block",
             "type": "code",
             "code": {
-                "rich_text": [{"type": "text", "text": {"content": text.strip()}}],
-                "language": "text"
+                "rich_text": [{"type": "text", "text": {"content": text}}],
+                "language": "plain_text"
             }
         })
-
-    def _add_list(self, element: Tag, ordered: bool = False) -> None:
-        """Liste hinzufügen."""
-        list_type = "numbered_list_item" if ordered else "bulleted_list_item"
-
-        for li in element.find_all("li", recursive=False):
-            # Prüfen ob To-Do
-            is_todo, checked = self._is_todo_item(li)
-
+    
+    def rewrite_resource_url_to_graph(site_id: str, href: str) -> Optional[str]:
+        """OneNote Resource-URL zu Graph API URL umschreiben."""
+        m = re.search(r"/onenote/resources/([^/?]+)", href)
+        if not m:
+            return None
+        res_id = m.group(1)
+        return f"https://graph.microsoft.com/v1.0/sites/{site_id}/onenote/resources/{res_id}/content"
+    
+    def fetch_resource(url: str) -> Tuple[Optional[bytes], Optional[str], str]:
+        """Resource von OneNote herunterladen."""
+        if not url:
+            return None, None, "file"
+        
+        orig_url = url
+        
+        # OneNote Resource-URLs umschreiben
+        if "/onenote/resources/" in url:
+            fixed = rewrite_resource_url_to_graph(site_id, url)
+            if fixed:
+                url = fixed
+        
+        try:
+            # MS Graph Auth Headers
+            headers = ms_graph_client.auth.microsoft.headers
+            r = requests.get(url, headers=headers)
+            r.raise_for_status()
+            
+            raw = r.content
+            header_ct = r.headers.get("Content-Type", "").split(";")[0].strip() or None
+            
+            # Content-Type Detection (aus core.utils)
+            from core.utils import detect_content_type_and_filename
+            final_ct, safe_name = detect_content_type_and_filename(raw, header_ct, orig_url)
+            
+            return raw, final_ct, safe_name
+        except Exception as e:
+            print(f"[⚠] Media fetch failed: {e}")
+            return None, None, "file"
+    
+    def handle_images(el: Tag):
+        """Bilder INLINE verarbeiten - direkt während des Parsens!"""
+        # <img> Tags
+        imgs = el.find_all("img", recursive=False)
+        for img in imgs:
+            src = img.get("data-fullres-src") or img.get("data-src") or img.get("src")
+            if src:
+                data, ctype, fname = fetch_resource(src)
+                if data:
+                    upload_id = notion_client.upload_file(fname, data, ctype)
+                    if upload_id:
+                        blocks.append(notion_client.create_image_block(upload_id))
+        
+        # <object> Tags (können auch Bilder oder Dateien sein)
+        for obj in el.find_all("object", recursive=False):
+            data_url = obj.get("data") or obj.get("data-fullres-src")
+            t = (obj.get("type") or "").lower() or None
+            if data_url:
+                data, ctype, fname = fetch_resource(data_url)
+                if data:
+                    upload_id = notion_client.upload_file(fname, data, ctype or t)
+                    if upload_id:
+                        if ((t or ctype) or "").startswith("image/"):
+                            blocks.append(notion_client.create_image_block(upload_id))
+                        else:
+                            blocks.append(notion_client.create_file_block(upload_id))
+    
+    # Checkbox-Unicode-Zeichen
+    checkbox_unicode_true = ("☑", "✅", "✓", "✔")
+    checkbox_unicode_false = ("☐", "⬜", "☒", "◻")
+    
+    body = soup.body or soup
+    
+    # Hauptloop: Alle Elemente durchgehen
+    for el in body.descendants:
+        if not isinstance(el, Tag):
+            continue
+        
+        name = el.name.lower()
+        
+        # Headings
+        if name in ("h1", "h2", "h3"):
+            add_heading(int(name[1]), el)
+        
+        # Blockquote
+        elif name == "blockquote":
+            add_quote(el)
+        
+        # Code-Blöcke
+        elif name == "pre":
+            code_el = el.find("code")
+            txt = code_el.get_text() if code_el else el.get_text()
+            add_code(txt.strip())
+        
+        # Listen
+        elif name in ("ul", "ol"):
+            ordered = (name == "ol")
+            for li in el.find_all("li", recursive=False):
+                # WICHTIG: Bilder in Listen verarbeiten!
+                handle_images(li)
+                
+                # To-Do Detection
+                checked = False
+                is_todo = False
+                
+                # Checkbox input
+                cb = li.find("input", {"type": "checkbox"})
+                if cb:
+                    is_todo = True
+                    checked = cb.has_attr("checked")
+                
+                # data-tag="to-do"
+                if not is_todo and (li.get("data-tag") and "to-do" in li.get("data-tag", "").lower()):
+                    is_todo = True
+                
+                # Checkbox als Bild
+                if not is_todo:
+                    img = li.find("img")
+                    if img and any(x in (img.get("alt", "").lower()) for x in ["to do", "todo", "checked", "unchecked"]):
+                        is_todo = True
+                        checked = "check" in img.get("alt", "").lower()
+                
+                # Unicode-Checkboxen
+                if not is_todo:
+                    text = li.get_text(" ", strip=True)
+                    if text.startswith(checkbox_unicode_true):
+                        is_todo = True
+                        checked = True
+                    elif text.startswith(checkbox_unicode_false):
+                        is_todo = True
+                        checked = False
+                    elif re.match(r"^\s*\[(x|X)\]\s+", text):
+                        is_todo = True
+                        checked = True
+                    elif re.match(r"^\s*\[\s\]\s+", text):
+                        is_todo = True
+                        checked = False
+                
+                if is_todo:
+                    add_todo(li, checked=checked)
+                else:
+                    t = "numbered_list_item" if ordered else "bulleted_list_item"
+                    blocks.append({
+                        "object": "block",
+                        "type": t,
+                        t: {"rich_text": build_rich_text(li)}
+                    })
+        
+        # Paragraphen
+        elif name == "p":
+            # WICHTIG: Bilder HIER verarbeiten, INLINE!
+            handle_images(el)
+            
+            # To-Do Detection in Paragraphen
+            is_todo = False
+            checked = False
+            
+            if el.get("data-tag") and "to-do" in el.get("data-tag", "").lower():
+                is_todo = True
+            
+            txt = el.get_text(" ", strip=True)
+            if txt.startswith(checkbox_unicode_true):
+                is_todo = True
+                checked = True
+            elif txt.startswith(checkbox_unicode_false):
+                is_todo = True
+                checked = False
+            elif re.match(r"^\s*\[(x|X)\]\s+", txt):
+                is_todo = True
+                checked = True
+            elif re.match(r"^\s*\[\s\]\s+", txt):
+                is_todo = True
+                checked = False
+            
             if is_todo:
-                self.blocks.append({
-                    "object": "block",
-                    "type": "to_do",
-                    "to_do": {
-                        "rich_text": self._build_rich_text(li),
-                        "checked": checked
-                    }
-                })
-            else:
-                self.blocks.append({
-                    "object": "block",
-                    "type": list_type,
-                    list_type: {"rich_text": self._build_rich_text(li)}
-                })
-
-    def _add_paragraph_or_todo(self, element: Tag) -> None:
-        """Paragraph oder To-Do hinzufügen."""
-        # Prüfen ob To-Do
-        is_todo, checked = self._is_todo_item(element)
-
-        if is_todo:
-            self.blocks.append({
-                "object": "block",
-                "type": "to_do",
-                "to_do": {
-                    "rich_text": self._build_rich_text(element),
-                    "checked": checked
-                }
-            })
-        elif element.get_text(strip=True):
-            rich_text = self._build_rich_text(element)
-            
-            # Prüfe Gesamt-Länge aller rich_text-Elemente
-            total_length = sum(len(rt.get("text", {}).get("content", "")) for rt in rich_text)
-            
-            if total_length <= 2000:
-                # Normal: Ein Block
-                self.blocks.append(self._create_paragraph(rich_text))
-            else:
-                # Zu lang: In mehrere Blöcke aufteilen
-                self._split_into_multiple_paragraphs(rich_text)
-
-    def _is_todo_item(self, element: Tag) -> Tuple[bool, bool]:
-        """Prüfen ob Element ein To-Do ist."""
-        # 1. Checkbox-Input
-        checkbox = element.find("input", {"type": "checkbox"})
-        if checkbox:
-            return True, checkbox.has_attr("checked")
-
-        # 2. Data-Tag-Attribut
-        data_tag = str(element.get("data-tag", "")).lower()
-        if "to-do" in data_tag:
-            return True, False
-
-        # 3. Bild mit Alt-Text
-        img = element.find("img")
-        if img:
-            alt = str(img.get("alt", "")).lower()
-            if any(keyword in alt for keyword in ["to do", "todo", "checked", "unchecked"]):
-                return True, "check" in alt
-
-        # 4. Unicode-Checkboxen im Text
-        text = element.get_text(" ", strip=True)
-        if text.startswith(self.CHECKBOX_TRUE):
-            return True, True
-        elif text.startswith(self.CHECKBOX_FALSE):
-            return True, False
-
-        # 5. Markdown-Style Checkboxen
-        if re.match(r"^\s*\[(x|X)\]\s+", text):
-            return True, True
-        elif re.match(r"^\s*\[\s\]\s+", text):
-            return True, False
-
-        return False, False
-
-    def _add_table(self, element: Tag) -> None:
-        """Tabelle extrahieren."""
-        rows = []
-        for tr in element.find_all("tr", recursive=False):
-            cells = [
-                td.get_text(" ", strip=True)
-                for td in tr.find_all(["td", "th"], recursive=False)
-            ]
-            if cells:
+                add_todo(el, checked=checked)
+            elif el.get_text(strip=True):
+                add_paragraph_rich(el)
+        
+        # Tabellen
+        elif name == "table":
+            rows = []
+            for tr in el.find_all("tr", recursive=False):
+                cells = [td.get_text(" ", strip=True) for td in tr.find_all(["td", "th"], recursive=False)]
                 rows.append(cells)
+            if rows:
+                tables.append(rows)
+        
+        # Links mit Dateien
+        elif name == "a":
+            href = el.get("href", "")
+            if "/onenote/resources/" in href:
+                data, ctype, fname = fetch_resource(href)
+                if data:
+                    upload_id = notion_client.upload_file(fname, data, ctype)
+                    if upload_id:
+                        blocks.append(notion_client.create_file_block(upload_id))
+    
+    # Fallback: Wenn keine Blöcke erstellt wurden
+    if not blocks and soup.get_text(strip=True):
+        blocks.append({
+            "object": "block",
+            "type": "paragraph",
+            "paragraph": {
+                "rich_text": [{"type": "text", "text": {"content": soup.get_text(' ', strip=True)}}]
+            }
+        })
+    
+    # Notion-Limit: Max 150 Blöcke pro Request
+    return blocks[:150], tables
 
-        if rows:
-            self.tables.append(rows)
+
+def append_table(notion_client, parent_block_id: str, rows: List[List[str]]):
+    """
+    Tabelle als echte Table-Blöcke zu Notion hinzufügen.
+    
+    Args:
+        notion_client: NotionClient-Instanz
+        parent_block_id: Parent-Block-ID (Page oder Block)
+        rows: Tabellenzeilen
+    """
+    if not rows:
+        return
+    
+    # Table-Block erstellen
+    table_block = {
+        "object": "block",
+        "type": "table",
+        "table": {
+            "table_width": max(len(r) for r in rows),
+            "has_column_header": False,
+            "has_row_header": False
+        }
+    }
+    
+    # Table erstellen und ID holen
+    res = notion_client.append_blocks(parent_block_id, [table_block])
+    created = res.get("results", [])
+    if not created:
+        print("[⚠] Table creation failed")
+        return
+    
+    table_id = created[-1].get("id")
+    
+    # Table-Row Blöcke erstellen
+    row_blocks = []
+    for r in rows:
+        cells = [[{"type": "text", "text": {"content": c[:2000]}}] for c in r]
+        row_blocks.append({
+            "object": "block",
+            "type": "table_row",
+            "table_row": {"cells": cells}
+        })
+    
+    # Rows hinzufügen
+    notion_client.append_blocks(table_id, row_blocks)
+    time.sleep(0.12)  # Rate limiting
 
 
+# Backward compatibility
 def parse_onenote_html(html: str) -> Tuple[List[Dict[str, Any]], List[List[List[str]]]]:
-    """Convenience-Funktion zum HTML-Parsing."""
-    parser = OneNoteHTMLParser()
-    return parser.parse(html)
+    """
+    Legacy-Funktion für Kompatibilität.
+    
+    WARNUNG: Diese Funktion kann KEINE Bilder verarbeiten!
+    Nutze stattdessen html_to_blocks_and_tables() mit den nötigen Clients.
+    """
+    print("[⚠] WARNING: parse_onenote_html() kann keine Bilder verarbeiten!")
+    print("[⚠] Nutze html_to_blocks_and_tables() mit ms_graph_client und notion_client!")
+    
+    # Dummy-Parser ohne Bild-Support
+    soup = BeautifulSoup(html, "html.parser")
+    blocks = []
+    tables = []
+    
+    # Sehr vereinfacht...
+    for p in soup.find_all("p"):
+        text = p.get_text(strip=True)
+        if text:
+            blocks.append({
+                "object": "block",
+                "type": "paragraph",
+                "paragraph": {"rich_text": [{"type": "text", "text": {"content": text[:2000]}}]}
+            })
+    
+    for table in soup.find_all("table"):
+        rows = []
+        for tr in table.find_all("tr"):
+            cells = [td.get_text(strip=True) for td in tr.find_all(["td", "th"])]
+            rows.append(cells)
+        if rows:
+            tables.append(rows)
+    
+    return blocks, tables
