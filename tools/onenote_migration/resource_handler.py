@@ -158,6 +158,10 @@ class ResourceHandler:
             Lokaler Pfad oder None bei Fehler
         """
         try:
+            # OneNote-URLs korrigieren: /siteCollections/ → /sites/
+            if "/siteCollections/" in url:
+                url = url.replace("/siteCollections/", "/sites/")
+            
             # Dateiname aus URL oder Parameter
             if not filename:
                 parsed = urlparse(url)
@@ -168,7 +172,7 @@ class ResourceHandler:
             local_path = os.path.join(self.temp_dir, safe_filename)
 
             # Download mit MS Graph Auth-Header
-            headers = self.ms_graph.auth_headers if hasattr(self.ms_graph, 'auth_headers') else {}
+            headers = self.ms_graph.auth.microsoft.headers if hasattr(self.ms_graph, 'auth') else {}
             
             response = requests.get(url, headers=headers, timeout=30, stream=True)
             response.raise_for_status()
