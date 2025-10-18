@@ -112,7 +112,34 @@ class NotionClient:
     def update_page(self, page_id: str, properties: Dict[str, Any]) -> None:
         """Seite aktualisieren."""
         self._make_request("PATCH", f"/pages/{page_id}", json={"properties": properties})
+    
+    def update_page_archived(self, page_id: str, archived: bool = True) -> None:
+        """Seite archivieren oder wiederherstellen."""
+        self._make_request("PATCH", f"/pages/{page_id}", json={"archived": archived})
 
+    def get_block_children(self, block_id: str) -> List[Dict[str, Any]]:
+        """Alle Kind-Blöcke eines Blocks/einer Seite abrufen."""
+        all_blocks = []
+        has_more = True
+        start_cursor = None
+        
+        while has_more:
+            params = {"page_size": 100}
+            if start_cursor:
+                params["start_cursor"] = start_cursor
+            
+            response = self._make_request("GET", f"/blocks/{block_id}/children", params=params)
+            all_blocks.extend(response.get("results", []))
+            
+            has_more = response.get("has_more", False)
+            start_cursor = response.get("next_cursor")
+        
+        return all_blocks
+    
+    def update_block(self, block_id: str, archived: bool = False) -> None:
+        """Block archivieren (löschen) oder wiederherstellen."""
+        self._make_request("PATCH", f"/blocks/{block_id}", json={"archived": archived})
+    
     def append_blocks(self, block_id: str, children: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Blöcke an bestehende Seite anhängen."""
         url = f"/blocks/{block_id}/children"

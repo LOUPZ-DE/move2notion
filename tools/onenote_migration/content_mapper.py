@@ -92,12 +92,26 @@ class ContentMapper:
             )
             
             if existing_page_id:
-                # Update: Properties aktualisieren UND Blöcke löschen/neu hinzufügen
-                self.notion.update_page(existing_page_id, properties)
-                notion_page_id = existing_page_id
-                print(f"[🔄] Page aktualisiert: {page_title}")
-                # WICHTIG: Bei Updates müssen auch Blöcke neu geschrieben werden!
-                # Alte Blöcke können nicht gelöscht werden, aber neue werden hinzugefügt
+                # Update: Alte Seite archivieren und neue erstellen (schneller als Blöcke einzeln zu löschen!)
+                print(f"[🗑️] Archiviere alte Seite und erstelle neue...")
+                try:
+                    # Alte Seite archivieren
+                    self.notion.update_page_archived(existing_page_id, archived=True)
+                    print(f"[✅] Alte Seite archiviert")
+                except Exception as e:
+                    print(f"[⚠] Fehler beim Archivieren: {e}")
+                
+                # Neue Seite erstellen
+                notion_page_id = self.notion.create_page(
+                    parent_id=database_id,
+                    properties=properties
+                )
+                
+                if not notion_page_id:
+                    print(f"[❌] Page-Erstellung fehlgeschlagen: {page_title}")
+                    return None
+                
+                print(f"[🔄] Page neu erstellt: {page_title}")
             else:
                 # Create: Neue Page erstellen
                 notion_page_id = self.notion.create_page(
@@ -225,6 +239,10 @@ class ContentMapper:
         # Modified - nur wenn Property existiert
         if modified and "Modified" in db_props and db_props["Modified"].get("type") == "date":
             properties["Modified"] = {"date": {"start": modified}}
+        
+        # LastEditedUtc - nur wenn Property existiert (dasselbe wie Modified)
+        if modified and "LastEditedUtc" in db_props and db_props["LastEditedUtc"].get("type") == "date":
+            properties["LastEditedUtc"] = {"date": {"start": modified}}
         
         return properties
 

@@ -62,6 +62,19 @@ python -m tools.onenote_migration.cli \
 - **Tabellen** → Notion Table-Blöcke
 - **Links** → Rich-Text mit URLs
 
+### ✅ Text-Formatierungen
+
+Das Tool erkennt automatisch **alle Text-Formatierungen** aus OneNote:
+
+- **Bold** (fett) - HTML-Tags (`<strong>`, `<b>`) + CSS (`font-weight:bold`)
+- **Italic** (kursiv) - HTML-Tags (`<em>`, `<i>`) + CSS (`font-style:italic`)
+- **Underline** (unterstrichen) - HTML-Tag (`<u>`) + CSS (`text-decoration:underline`)
+- **Strikethrough** (durchgestrichen) - HTML-Tags (`<strike>`, `<s>`, `<del>`) + CSS (`text-decoration:line-through`)
+- **Code** (inline) - HTML-Tag (`<code>`)
+- **Kombinierte Formatierungen** (z.B. fett + kursiv)
+
+OneNote verwendet häufig CSS-Styles statt HTML-Tags - beides wird unterstützt!
+
 ### ✅ To-Do-Erkennung
 
 Automatische Erkennung von Checkboxen in mehreren Formaten:
@@ -74,29 +87,47 @@ Automatische Erkennung von Checkboxen in mehreren Formaten:
 
 Das Tool **übernimmt automatisch Bilder und Dateien** aus OneNote-Seiten:
 
-- **Bilder**: Werden heruntergeladen und zu **Notion hochgeladen** als File-Upload-Blöcke
-- **Dateien**: Links zu Dateien werden erkannt und hochgeladen
+- **Bilder**: Werden heruntergeladen und mit **Notion File Upload API** hochgeladen
+- **Inline-Bilder**: Werden direkt im Text-Flow platziert (wie in OneNote)
+- **Dateien**: Dokumente, PDFs, etc. werden als File-Blöcke eingefügt
 - **Caching**: Bereits geladene Assets werden gecacht (gleiche URL = 1x Upload)
 - **Content-Type-Sniffing**: Automatische Typ-Bestimmung (PNG, JPG, PDF, DOCX, etc.)
-- **Error-Handling**: Upload-Fehler unterbrechen nicht den Import (Logger wird genutzt)
+- **Error-Handling**: Upload-Fehler unterbrechen nicht den Import
 
 **Beispiel:**
 ```
 OneNote-Seite mit 3 Bildern
     ↓
-Bilder werden heruntergeladen
+Bilder werden von Microsoft Graph heruntergeladen
     ↓
-Zu Notion hochgeladen
+Mit Notion File Upload API hochgeladen
     ↓
-Notion-Page enthält 3 Bild-Blöcke ✅
+Notion-Page enthält 3 inline Bild-Blöcke ✅
 ```
 
-### ✅ Idempotenz
+**Hinweis:** Bilder werden als **permanente Notion-Assets** gespeichert, nicht als externe URLs!
 
-- **Resume-Modus**: `--resume` überspringt unveränderte Seiten
-- **Checksum-Vergleich**: Basiert auf HTML-Content
+### ✅ Idempotenz & Updates
+
+**Create vs. Update:**
+- **Neue Seiten**: Werden in Notion erstellt
+- **Bestehende Seiten**: Werden erkannt via `OneNotePageId`-Property
+- **Update-Verhalten**: Alte Seite wird archiviert, neue wird erstellt
+  - **Warum?** Schneller als einzelne Blöcke zu löschen (2 statt 40+ API-Calls)
+  - **Vorteil:** Alte Version bleibt im Archiv als Backup
+
+**Resume-Modus:**
+- `--resume` überspringt unveränderte Seiten
+- **Checksum-Vergleich**: Basiert auf HTML-Content-Hash
 - **State-Datei**: `~/.onenote2notion/state.json`
 - **Zeitfilter**: `--since 2025-01-01` für inkrementelle Imports
+
+**Beispiel:**
+```
+Import 1: Seite "Meeting Notes" erstellt
+Import 2: Seite unverändert → übersprungen (--resume)
+Import 3: Seite geändert → alte archiviert, neue erstellt
+```
 
 ---
 
@@ -222,6 +253,14 @@ rm ~/.onenote2notion/state.json
 
 ## Bekannte Limitationen
 
-- OneNote-Bilder werden als externe Urls gespeichert (Notion-API-Limit)
-- Embedded Objects (Videos, etc.) werden übersprungen
-- Nested Lists werden flachgedrückt
+- **Nested Lists**: Werden flach dargestellt (Notion-API-Limitation)
+- **Embedded Videos**: Werden übersprungen (nur Links bleiben)
+- **Page-Größe**: Max. 150 Blöcke pro Page (Notion-Limit)
+- **Datei-Größe**: Max. 20 MB pro File-Upload (Notion-Limit)
+
+**Was funktioniert:**
+- ✅ Bilder werden permanent in Notion hochgeladen
+- ✅ Text-Formatierungen (bold, italic, underline, strikethrough)
+- ✅ To-Do-Listen mit Checkbox-Status
+- ✅ Tabellen als echte Notion-Tables
+- ✅ Inline-Links

@@ -14,27 +14,138 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 
 
 def build_rich_text(node: Tag) -> List[Dict[str, Any]]:
-    """Rich-Text aus HTML-Element erstellen."""
+    """
+    Rich-Text aus HTML-Element erstellen mit Formatierungs-Support.
+    
+    Unterstützt: bold, italic, underline, strikethrough, code
+    Erkennt sowohl HTML-Tags als auch CSS-Styles!
+    """
     parts: List[Dict[str, Any]] = []
     
-    def push_text(text: str):
-        if text:
-            parts.append({"type": "text", "text": {"content": text}})
+    def parse_style_annotations(style_str: str) -> Dict[str, bool]:
+        """Parse CSS style string und extrahiere Formatierungs-Annotations."""
+        annotations = {
+            "bold": False,
+            "italic": False,
+            "strikethrough": False,
+            "underline": False,
+            "code": False
+        }
+        
+        if not style_str:
+            return annotations
+        
+        style_lower = style_str.lower()
+        
+        # Bold: font-weight:bold oder font-weight:700+
+        if "font-weight:bold" in style_lower or any(f"font-weight:{w}" in style_lower for w in ["700", "800", "900"]):
+            annotations["bold"] = True
+        
+        # Italic: font-style:italic
+        if "font-style:italic" in style_lower:
+            annotations["italic"] = True
+        
+        # Underline: text-decoration:underline
+        if "text-decoration:underline" in style_lower:
+            annotations["underline"] = True
+        
+        # Strikethrough: text-decoration:line-through
+        if "text-decoration:line-through" in style_lower:
+            annotations["strikethrough"] = True
+        
+        return annotations
     
-    for child in node.children:
-        if isinstance(child, NavigableString):
-            push_text(str(child))
-        elif isinstance(child, Tag) and child.name.lower() == "a":
-            href = child.get("href")
-            txt = child.get_text()
-            parts.append({"type": "text", "text": {"content": txt, "link": {"url": href}}})
-        elif isinstance(child, Tag):
-            parts.extend(build_rich_text(child))
+    def process_node(n, annotations=None):
+        """Rekursiv durch DOM mit Annotations-Stack."""
+        if annotations is None:
+            annotations = {
+                "bold": False,
+                "italic": False,
+                "strikethrough": False,
+                "underline": False,
+                "code": False
+            }
+        
+        if isinstance(n, NavigableString):
+            # Text mit aktuellen Formatierungen
+            text = str(n)
+            if text:
+                parts.append({
+                    "type": "text",
+                    "text": {"content": text},
+                    "annotations": annotations.copy()
+                })
+        elif isinstance(n, Tag):
+            tag_name = n.name.lower()
+            
+            # Neue Annotations basierend auf Tag UND Style
+            new_annotations = annotations.copy()
+            
+            # ZUERST: CSS Styles parsen (OneNote verwendet diese!)
+            style = n.get("style")
+            if style:
+                style_annotations = parse_style_annotations(str(style))
+                # Merge mit existing annotations (OR-Logik)
+                for key in new_annotations:
+                    if style_annotations[key]:
+                        new_annotations[key] = True
+            
+            # DANN: HTML-Tags (für andere Quellen)
+            # Bold
+            if tag_name in ("strong", "b"):
+                new_annotations["bold"] = True
+            
+            # Italic
+            elif tag_name in ("em", "i"):
+                new_annotations["italic"] = True
+            
+            # Underline
+            elif tag_name == "u":
+                new_annotations["underline"] = True
+            
+            # Strikethrough
+            elif tag_name in ("strike", "s", "del"):
+                new_annotations["strikethrough"] = True
+            
+            # Code (inline)
+            elif tag_name == "code":
+                new_annotations["code"] = True
+            
+            # Links - spezielle Behandlung
+            if tag_name == "a":
+                href = n.get("href")
+                if href:
+                    # Link-Text mit aktuellen Formatierungen
+                    txt = n.get_text()
+                    if txt:
+                        parts.append({
+                            "type": "text",
+                            "text": {"content": txt, "link": {"url": href}},
+                            "annotations": new_annotations.copy()
+                        })
+                    return  # Kinder nicht mehr verarbeiten
+            
+            # Kinder rekursiv verarbeiten
+            for child in n.children:
+                process_node(child, new_annotations)
+    
+    # Verarbeitung starten
+    process_node(node)
+    
+    # Whitespace-only Text-Parts entfernen (führen zu Problemen)
+    parts = [p for p in parts if p["type"] != "text" or p["text"]["content"].strip()]
     
     # Notion-Limit: 2000 Zeichen pro rich_text Element
     for p in parts:
         if p["type"] == "text" and len(p["text"]["content"]) > 2000:
             p["text"]["content"] = p["text"]["content"][:2000]
+    
+    # Leere Annotations entfernen (wenn alle False)
+    for p in parts:
+        if "annotations" in p:
+            if not any(p["annotations"].values()):
+                # Alle annotations sind False - entfernen
+                del p["annotations"]
     
     return parts or [{"type": "text", "text": {"content": ""}}]
 

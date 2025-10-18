@@ -89,11 +89,13 @@ python -m tools.onenote_migration.cli \
 ```
 
 **Features:**
-- HTML-Parsing (Überschriften, Listen, Code)
-- To-Do-Erkennung
-- Bild/Datei-Upload
-- Idempotente Synchronisation
-- Zeitfilter (`--since 2025-01-01`)
+- **HTML-Parsing**: Überschriften, Listen, Code, Tabellen
+- **Text-Formatierungen**: Bold, Italic, Underline, Strikethrough (HTML + CSS)
+- **To-Do-Erkennung**: Automatische Checkbox-Erkennung
+- **Bild/Datei-Upload**: Permanente Notion-Assets (File Upload API)
+- **Idempotente Synchronisation**: Resume-Modus mit Checksummen
+- **Smart Updates**: Alte Seite archivieren statt Blöcke einzeln löschen (95% schneller)
+- **Zeitfilter**: `--since 2025-01-01` für inkrementelle Imports
 
 📖 [Details](docs/ONENOTE.md)
 
