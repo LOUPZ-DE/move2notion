@@ -142,19 +142,94 @@ def html_to_blocks_and_tables(
             print(f"[⚠] Media fetch failed: {e}")
             return None, None, "file"
     
-    def handle_images(el: Tag):
-        """Bilder INLINE verarbeiten - direkt während des Parsens!"""
-        # <img> Tags - Nur direkte Kinder um Duplikate zu vermeiden
-        imgs = el.find_all("img", recursive=False)
-        for img in imgs:
-            # Prüfe ob bereits verarbeitet (um Duplikate zu vermeiden)
-            img_id = id(img)
-            if img_id in processed_imgs:
-                continue
-            processed_imgs.add(img_id)
-            
-            src = img.get("data-fullres-src") or img.get("data-src") or img.get("src")
-            if src:
+    def handle_images_with_split(el: Tag, create_paragraph=True):
+        """
+        WORKAROUND: Paragraphen aufbrechen und Bilder dazwischen einfügen!
+        
+        Sammelt Text vor/nach Bildern und erstellt separate Blöcke:
+        - Text vor Bild → Paragraph 1
+        - Bild → Image Block  
+        - Text nach Bild → Paragraph 2
+        """
+        # Finde alle Bilder (auch verschachtelte)
+        imgs = el.find_all("img")
+        
+        if not imgs:
+            return False  # Keine Bilder gefunden
+        
+        # Clone des Elements für Text-Extraktion
+        import copy
+        el_copy = copy.copy(el)
+        
+        # Sammle alle Text-Teile und Bilder in korrekter Reihenfolge
+        parts = []
+        current_text = []
+        
+        for child in el.children:
+            if isinstance(child, Tag) and child.name == "img":
+                # Text vor dem Bild speichern
+                if current_text:
+                    text_content = ''.join(str(t) for t in current_text).strip()
+                    if text_content:
+                        # Erstelle temporäres Element für rich_text
+                        temp = BeautifulSoup(f'<span>{text_content}</span>', 'html.parser').span
+                        parts.append(('text', build_rich_text(temp)))
+                    current_text = []
+                
+                # Bild verarbeiten
+                img_id = id(child)
+                if img_id not in processed_imgs:
+                    processed_imgs.add(img_id)
+                    src = child.get("data-fullres-src") or child.get("data-src") or child.get("src")
+                    if src:
+                        parts.append(('image', src))
+            else:
+                # Text sammeln
+                current_text.append(child)
+        
+        # Restlichen Text nach dem letzten Bild
+        if current_text:
+            text_content = ''.join(str(t) for t in current_text).strip()
+            if text_content:
+                temp = BeautifulSoup(f'<span>{text_content}</span>', 'html.parser').span
+                parts.append(('text', build_rich_text(temp)))
+        
+        # Wenn nur Text (keine Bilder in direkten Kindern), prüfe verschachtelte
+        if all(p[0] == 'text' for p in parts) or not parts:
+            # Fallback: Bilder sind tiefer verschachtelt
+            for img in imgs:
+                img_id = id(img)
+                if img_id not in processed_imgs:
+                    processed_imgs.add(img_id)
+                    src = img.get("data-fullres-src") or img.get("data-src") or img.get("src")
+                    if src:
+                        print(f"[📸] Bild gefunden: {src[:100]}")
+                        data, ctype, fname = fetch_resource(src)
+                        if data:
+                            print(f"[📥] Bild heruntergeladen: {fname} ({len(data)} bytes, {ctype})")
+                            upload_id = notion_client.upload_file(fname, data, ctype)
+                            if upload_id:
+                                print(f"[✅] Bild hochgeladen: {upload_id}")
+                                blocks.append(notion_client.create_image_block(upload_id))
+                            else:
+                                print(f"[❌] Bild-Upload fehlgeschlagen: {fname}")
+                        else:
+                            print(f"[❌] Bild-Download fehlgeschlagen: {src[:100]}")
+            return len(imgs) > 0
+        
+        # Erstelle Blöcke in korrekter Reihenfolge
+        for part_type, content in parts:
+            if part_type == 'text' and create_paragraph:
+                # Text als Paragraph
+                if content:  # content ist bereits rich_text
+                    blocks.append({
+                        "object": "block",
+                        "type": "paragraph",
+                        "paragraph": {"rich_text": content}
+                    })
+            elif part_type == 'image':
+                # Bild hochladen und einfügen
+                src = content
                 print(f"[📸] Bild gefunden: {src[:100]}")
                 data, ctype, fname = fetch_resource(src)
                 if data:
@@ -168,19 +243,7 @@ def html_to_blocks_and_tables(
                 else:
                     print(f"[❌] Bild-Download fehlgeschlagen: {src[:100]}")
         
-        # <object> Tags (können auch Bilder oder Dateien sein)
-        for obj in el.find_all("object"):  # Default ist recursive=True
-            data_url = obj.get("data") or obj.get("data-fullres-src")
-            t = (obj.get("type") or "").lower() or None
-            if data_url:
-                data, ctype, fname = fetch_resource(data_url)
-                if data:
-                    upload_id = notion_client.upload_file(fname, data, ctype or t)
-                    if upload_id:
-                        if ((t or ctype) or "").startswith("image/"):
-                            blocks.append(notion_client.create_image_block(upload_id))
-                        else:
-                            blocks.append(notion_client.create_file_block(upload_id))
+        return True  # Bilder wurden verarbeitet
     
     # Checkbox-Unicode-Zeichen
     checkbox_unicode_true = ("☑", "✅", "✓", "✔")
@@ -216,10 +279,14 @@ def html_to_blocks_and_tables(
         elif name in ("ul", "ol"):
             ordered = (name == "ol")
             for li in el.find_all("li", recursive=False):
-                # WICHTIG: Bilder in Listen verarbeiten!
-                handle_images(li)
+                # WORKAROUND: Listen mit Bildern aufbrechen!
+                has_images = handle_images_with_split(li, create_paragraph=False)
                 
-                # To-Do Detection
+                if has_images:
+                    # Bilder wurden bereits verarbeitet, skip den Rest
+                    continue
+                
+                # To-Do Detection (nur wenn keine Bilder)
                 checked = False
                 is_todo = False
                 
@@ -268,34 +335,36 @@ def html_to_blocks_and_tables(
         
         # Paragraphen
         elif name == "p":
-            # WICHTIG: Bilder HIER verarbeiten, INLINE!
-            handle_images(el)
+            # WORKAROUND: Paragraphen mit Bildern aufbrechen!
+            has_images = handle_images_with_split(el, create_paragraph=True)
             
-            # To-Do Detection in Paragraphen
-            is_todo = False
-            checked = False
-            
-            if el.get("data-tag") and "to-do" in el.get("data-tag", "").lower():
-                is_todo = True
-            
-            txt = el.get_text(" ", strip=True)
-            if txt.startswith(checkbox_unicode_true):
-                is_todo = True
-                checked = True
-            elif txt.startswith(checkbox_unicode_false):
-                is_todo = True
+            if not has_images:
+                # Keine Bilder - normale Verarbeitung
+                # To-Do Detection in Paragraphen
+                is_todo = False
                 checked = False
-            elif re.match(r"^\s*\[(x|X)\]\s+", txt):
-                is_todo = True
-                checked = True
-            elif re.match(r"^\s*\[\s\]\s+", txt):
-                is_todo = True
-                checked = False
-            
-            if is_todo:
-                add_todo(el, checked=checked)
-            elif el.get_text(strip=True):
-                add_paragraph_rich(el)
+                
+                if el.get("data-tag") and "to-do" in el.get("data-tag", "").lower():
+                    is_todo = True
+                
+                txt = el.get_text(" ", strip=True)
+                if txt.startswith(checkbox_unicode_true):
+                    is_todo = True
+                    checked = True
+                elif txt.startswith(checkbox_unicode_false):
+                    is_todo = True
+                    checked = False
+                elif re.match(r"^\s*\[(x|X)\]\s+", txt):
+                    is_todo = True
+                    checked = True
+                elif re.match(r"^\s*\[\s\]\s+", txt):
+                    is_todo = True
+                    checked = False
+                
+                if is_todo:
+                    add_todo(el, checked=checked)
+                elif el.get_text(strip=True):
+                    add_paragraph_rich(el)
         
         # Tabellen
         elif name == "table":
