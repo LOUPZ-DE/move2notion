@@ -149,11 +149,18 @@ def html_to_blocks_and_tables(
         for img in imgs:
             src = img.get("data-fullres-src") or img.get("data-src") or img.get("src")
             if src:
+                print(f"[📸] Bild gefunden: {src[:100]}")
                 data, ctype, fname = fetch_resource(src)
                 if data:
+                    print(f"[📥] Bild heruntergeladen: {fname} ({len(data)} bytes, {ctype})")
                     upload_id = notion_client.upload_file(fname, data, ctype)
                     if upload_id:
+                        print(f"[✅] Bild hochgeladen: {upload_id}")
                         blocks.append(notion_client.create_image_block(upload_id))
+                    else:
+                        print(f"[❌] Bild-Upload fehlgeschlagen: {fname}")
+                else:
+                    print(f"[❌] Bild-Download fehlgeschlagen: {src[:100]}")
         
         # <object> Tags (können auch Bilder oder Dateien sein)
         for obj in el.find_all("object", recursive=False):

@@ -231,6 +231,9 @@ Beispiele:
         if not self.content_mapper:
             self.content_mapper = ContentMapper(self.notion, self.ms_graph, site_id)
 
+        # Notebook-Name speichern für späteren Zugriff
+        self._current_notebook_name = notebook_name
+
         # Sections laden
         sections = self._get_sections(site_id, notebook_id)
 
@@ -259,6 +262,9 @@ Beispiele:
         section_name = section["displayName"]
 
         print(f"  📄 Section: {section_name}")
+
+        # Section-Name speichern für späteren Zugriff
+        self._current_section_name = section_name
 
         # Seiten laden
         pages = self._get_pages(site_id, section_id)
@@ -310,8 +316,8 @@ Beispiele:
             notion_page_id = self.content_mapper.map_page_to_notion(
                 onenote_page=page,
                 database_id=self.args.database_id,
-                section_name=self._get_section_name(section_id),
-                notebook_name=self._get_notebook_name(notebook_id)
+                section_name=getattr(self, '_current_section_name', ''),
+                notebook_name=getattr(self, '_current_notebook_name', '')
             )
             
             # State-Update könnte hier erfolgen (optional für später)

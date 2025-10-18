@@ -92,10 +92,12 @@ class ContentMapper:
             )
             
             if existing_page_id:
-                # Update: Nur Properties aktualisieren
+                # Update: Properties aktualisieren UND Blöcke löschen/neu hinzufügen
                 self.notion.update_page(existing_page_id, properties)
                 notion_page_id = existing_page_id
                 print(f"[🔄] Page aktualisiert: {page_title}")
+                # WICHTIG: Bei Updates müssen auch Blöcke neu geschrieben werden!
+                # Alte Blöcke können nicht gelöscht werden, aber neue werden hinzugefügt
             else:
                 # Create: Neue Page erstellen
                 notion_page_id = self.notion.create_page(
@@ -157,7 +159,10 @@ class ContentMapper:
         try:
             db = self.notion.get_database(database_id)
             db_props = db.get("properties", {})
-        except:
+            print(f"[📋] Datenbank-Properties: {list(db_props.keys())}")
+            print(f"[📋] section_name='{section}', notebook='{notebook}'")
+        except Exception as e:
+            print(f"[❌] Fehler beim Abrufen der DB-Properties: {e}")
             db_props = {}
         
         properties = {}
@@ -179,8 +184,16 @@ class ContentMapper:
                 properties["OneNotePageId"] = {"url": page_id}
         
         # Section - nur wenn Property existiert
-        if section and "Section" in db_props and db_props["Section"].get("type") == "select":
-            properties["Section"] = {"select": {"name": section}}
+        if section and "Section" in db_props:
+            prop_type = db_props["Section"].get("type")
+            print(f"[🔍] Section-Property gefunden: Type={prop_type}, Value={section}")
+            if prop_type == "select":
+                properties["Section"] = {"select": {"name": section}}
+                print(f"[✅] Section gesetzt: {section}")
+            else:
+                print(f"[⚠] Section-Property ist nicht vom Typ 'select', sondern '{prop_type}'")
+        elif section:
+            print(f"[⚠] Section-Property existiert nicht in Datenbank (section_name='{section}')")
         
         # SourceURL - nur wenn Property existiert
         if web_url and "SourceURL" in db_props and db_props["SourceURL"].get("type") == "url":
