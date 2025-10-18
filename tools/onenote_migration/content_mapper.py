@@ -17,17 +17,19 @@ from .resource_handler import ResourceHandler
 class ContentMapper:
     """Orchestriert die Konvertierung von OneNote-Content zu Notion."""
 
-    def __init__(self, notion_client, ms_graph_client, resource_handler: Optional[ResourceHandler] = None):
+    def __init__(self, notion_client, ms_graph_client, site_id: str, resource_handler: Optional[ResourceHandler] = None):
         """
         Initialisierung.
         
         Args:
             notion_client: NotionClient-Instanz
             ms_graph_client: MSGraphClient-Instanz
+            site_id: SharePoint-Site-ID
             resource_handler: Optionaler ResourceHandler
         """
         self.notion = notion_client
         self.ms_graph = ms_graph_client
+        self.site_id = site_id
         self.resource_handler = resource_handler or ResourceHandler(notion_client, ms_graph_client)
 
     def map_page_to_notion(
@@ -146,8 +148,8 @@ class ContentMapper:
     def _fetch_page_content(self, page_id: str) -> Optional[str]:
         """OneNote-Page-Content laden."""
         try:
-            # MS Graph API: Page-Content laden
-            content = self.ms_graph.get_page_content(page_id)
+            # MS Graph API: Page-Content laden (mit site_id)
+            content = self.ms_graph.get_page_content(self.site_id, page_id)
             return content
         except Exception as e:
             print(f"[⚠] Content-Laden fehlgeschlagen: {e}")

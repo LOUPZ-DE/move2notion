@@ -97,8 +97,7 @@ Beispiele:
             state_path = self.args.state_path if self.args else None
             self.state_manager = StateManager(state_path)
 
-            # Content Mapper
-            self.content_mapper = ContentMapper(self.notion, self.ms_graph)
+            # Content Mapper wird später mit site_id initialisiert
 
             if self.args and self.args.verbose:
                 print("[✅] Services initialisiert")
@@ -223,6 +222,10 @@ Beispiele:
         notebook_name = notebook["displayName"]
 
         print(f"\n📚 Verarbeite Notebook: {notebook_name}")
+
+        # ContentMapper mit site_id initialisieren (falls noch nicht gemacht)
+        if not self.content_mapper:
+            self.content_mapper = ContentMapper(self.notion, self.ms_graph, site_id)
 
         # Sections laden
         sections = self._get_sections(site_id, notebook_id)
