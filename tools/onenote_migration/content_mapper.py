@@ -111,9 +111,22 @@ class ContentMapper:
 
             # 7. Blöcke hinzufügen (Bilder sind bereits INLINE!)
             if blocks:
+                print(f"[📝] {len(blocks)} Blöcke gefunden (inkl. Bilder)")
+                # Debug: Zeige Block-Typen
+                block_types = [b.get('type') for b in blocks]
+                print(f"[📝] Block-Typen: {block_types}")
+                
                 # FAIL-SAFE: Validiere alle Blöcke vor dem Senden
                 validated_blocks = self._validate_blocks(blocks)
+                print(f"[📝] {len(validated_blocks)} Blöcke nach Validierung")
+                
+                # Bei Updates: Lösche alte Blöcke erst (falls möglich)
+                if existing_page_id:
+                    print(f"[🔄] Update-Modus: Füge {len(validated_blocks)} neue Blöcke hinzu")
+                
                 self.notion.append_blocks(notion_page_id, validated_blocks)
+            else:
+                print(f"[⚠] Keine Blöcke zum Hinzufügen")
 
             # 8. Tabellen als echte Table-Blöcke hinzufügen
             if tables:
@@ -226,6 +239,12 @@ class ContentMapper:
         for block in blocks:
             block_type = block.get("type")
             if not block_type:
+                continue
+            
+            # WICHTIG: Image- und File-Blöcke haben kein rich_text!
+            if block_type in ["image", "file", "pdf", "video", "audio"]:
+                # Diese Blöcke unverändert durchlassen
+                validated.append(block)
                 continue
             
             # Block-Content holen
