@@ -30,7 +30,13 @@ class ContentMapper:
         self.notion = notion_client
         self.ms_graph = ms_graph_client
         self.site_id = site_id
-        self.resource_handler = resource_handler or ResourceHandler(notion_client, ms_graph_client)
+        
+        # ResourceHandler mit site_id initialisieren
+        if resource_handler:
+            self.resource_handler = resource_handler
+        else:
+            self.resource_handler = ResourceHandler(notion_client, ms_graph_client)
+            self.resource_handler.site_id = site_id  # Site-ID setzen
 
     def map_page_to_notion(
         self,
@@ -67,36 +73,55 @@ class ContentMapper:
             # 3. HTML parsen
             blocks, tables = parse_onenote_html(html_content)
 
-            # 4. Notion-Properties erstellen
+            # 4. Web-URL extrahieren
+            web_url = onenote_page.get("links", {}).get("oneNoteWebUrl", {}).get("href")
+            
+            # 5. Notion-Properties erstellen
             properties = self._build_properties(
-                page_title,
-                section_name,
-                notebook_name,
-                created_time,
-                modified_time
+                title=page_title,
+                page_id=page_id,
+                database_id=database_id,
+                section=section_name,
+                notebook=notebook_name,
+                created=created_time,
+                modified=modified_time,
+                web_url=web_url
             )
 
-            # 5. Notion-Page erstellen
-            notion_page_id = self.notion.create_page(
-                parent_id=database_id,
-                properties=properties
+            # 6. Prüfe ob Page bereits existiert (Update vs. Create)
+            existing_page_id = self.notion.find_page_by_property(
+                database_id,
+                "OneNotePageId",
+                page_id
             )
+            
+            if existing_page_id:
+                # Update: Nur Properties aktualisieren
+                self.notion.update_page(existing_page_id, properties)
+                notion_page_id = existing_page_id
+                print(f"[🔄] Page aktualisiert: {page_title}")
+            else:
+                # Create: Neue Page erstellen
+                notion_page_id = self.notion.create_page(
+                    parent_id=database_id,
+                    properties=properties
+                )
+                
+                if not notion_page_id:
+                    print(f"[❌] Page-Erstellung fehlgeschlagen: {page_title}")
+                    return None
 
-            if not notion_page_id:
-                print(f"[❌] Page-Erstellung fehlgeschlagen: {page_title}")
-                return None
-
-            # 6. Assets verarbeiten (Bilder & Dateien)
+            # 7. Assets verarbeiten (Bilder & Dateien)
             asset_blocks = self._process_assets(html_content, notion_page_id)
             
-            # 7. Blöcke hinzufügen (Content + Assets)
+            # 8. Blöcke hinzufügen (Content + Assets)
             all_blocks = blocks + asset_blocks
             if all_blocks:
                 # FAIL-SAFE: Validiere alle Blöcke vor dem Senden
                 validated_blocks = self._validate_blocks(all_blocks)
                 self.notion.append_blocks(notion_page_id, validated_blocks)
 
-            # 8. Tabellen hinzufügen
+            # 9. Tabellen hinzufügen
             if tables:
                 for table in tables:
                     self._add_table_to_page(notion_page_id, table)
@@ -160,24 +185,65 @@ class ContentMapper:
     def _build_properties(
         self,
         title: str,
+        page_id: str,
+        database_id: str,
         section: str = "",
         notebook: str = "",
         created: Optional[str] = None,
-        modified: Optional[str] = None
+        modified: Optional[str] = None,
+        web_url: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Notion-Properties erstellen."""
-        # Minimal: Nur Name (Title) ist erforderlich
-        properties = {
-            "Name": {
-                "title": [
-                    {"type": "text", "text": {"content": title[:2000]}}
-                ]
-            }
+        """
+        Notion-Properties erstellen.
+        
+        Nur Properties setzen, die in der Datenbank existieren!
+        """
+        # Hole Datenbank-Schema
+        try:
+            db = self.notion.get_database(database_id)
+            db_props = db.get("properties", {})
+        except:
+            db_props = {}
+        
+        properties = {}
+        
+        # Title (immer erforderlich)
+        title_key = next((k for k, v in db_props.items() if v.get("type") == "title"), "Name")
+        properties[title_key] = {
+            "title": [{"type": "text", "text": {"content": title[:200]}}]
         }
         
-        # Optional: Nur setzen wenn die Property im Target existiert
-        # (Die Properties "Section", "Notebook", "Created", "Modified" sind optional)
-        # Sie werden in der CLI verwaltet oder später manuell hinzugefügt
+        # OneNotePageId - nur wenn Property existiert
+        if "OneNotePageId" in db_props:
+            prop_type = db_props["OneNotePageId"].get("type")
+            if prop_type == "rich_text":
+                properties["OneNotePageId"] = {
+                    "rich_text": [{"type": "text", "text": {"content": page_id}}]
+                }
+            elif prop_type == "url":
+                properties["OneNotePageId"] = {"url": page_id}
+        
+        # Section - nur wenn Property existiert
+        if section and "Section" in db_props and db_props["Section"].get("type") == "select":
+            properties["Section"] = {"select": {"name": section}}
+        
+        # SourceURL - nur wenn Property existiert
+        if web_url and "SourceURL" in db_props and db_props["SourceURL"].get("type") == "url":
+            properties["SourceURL"] = {"url": web_url}
+        
+        # Notebook - nur wenn Property existiert
+        if notebook and "Notebook" in db_props:
+            properties["Notebook"] = {
+                "rich_text": [{"type": "text", "text": {"content": notebook}}]
+            }
+        
+        # Created - nur wenn Property existiert
+        if created and "Created" in db_props and db_props["Created"].get("type") == "date":
+            properties["Created"] = {"date": {"start": created}}
+        
+        # Modified - nur wenn Property existiert
+        if modified and "Modified" in db_props and db_props["Modified"].get("type") == "date":
+            properties["Modified"] = {"date": {"start": modified}}
         
         return properties
 

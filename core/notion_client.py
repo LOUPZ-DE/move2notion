@@ -147,31 +147,44 @@ class NotionClient:
         return None
 
     def upload_file(self, filename: str, data: bytes, content_type: Optional[str] = None) -> Optional[str]:
-        """Datei zu Notion hochladen."""
-        # Zuerst Upload-Objekt erstellen
-        upload_data = {"filename": filename, "content_type": content_type or "application/octet-stream"}
+        """
+        Datei zu Notion hochladen (2-Schritt File Upload API).
+        
+        Schritt 1: file_upload erstellen
+        Schritt 2: Datei senden (WICHTIG: OHNE Content-Type Header!)
+        """
+        # Validierung
+        if len(data) > 20 * 1024 * 1024:
+            print(f"[⚠] Datei zu groß (>20MB): {filename}")
+            return None
+        
+        ct = content_type or "application/octet-stream"
+        
+        # Schritt 1: file_upload erstellen
         response = requests.post(
             "https://api.notion.com/v1/file_uploads",
             headers=self.auth.notion.headers,
-            json=upload_data
+            json={"filename": filename, "content_type": ct}
         )
 
-        if not response.ok:
-            print(f"[Warning] File upload creation failed: {response.text[:300]}")
+        if response.status_code != 200:
+            print(f"[⚠] file_upload creation failed: {response.text[:300]}")
             return None
 
         file_upload_id = response.json().get("id")
-
-        # Datei senden (Multipart ohne expliziten Content-Type)
-        files = {"file": (filename, data, content_type or "application/octet-stream")}
+        
+        # Schritt 2: Datei senden
+        # KRITISCH: Nicht Content-Type manuell setzen! 
+        # requests.post() mit files= setzt automatisch multipart/form-data mit boundary
+        files = {"file": (filename, data, ct)}
         upload_response = requests.post(
             f"https://api.notion.com/v1/file_uploads/{file_upload_id}/send",
-            headers=self.auth.notion.headers_no_content_type,
+            headers=self.auth.notion.headers_no_content_type,  # NUR Authorization + Notion-Version
             files=files
         )
 
-        if not upload_response.ok:
-            print(f"[Warning] File send failed: {upload_response.text[:300]}")
+        if upload_response.status_code != 200:
+            print(f"[⚠] file send failed: {upload_response.text[:300]}")
             return None
 
         return file_upload_id
