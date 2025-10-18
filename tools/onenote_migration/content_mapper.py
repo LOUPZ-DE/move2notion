@@ -158,12 +158,13 @@ class ContentMapper:
     def _build_properties(
         self,
         title: str,
-        section: str,
-        notebook: str,
-        created: Optional[str],
-        modified: Optional[str]
+        section: str = "",
+        notebook: str = "",
+        created: Optional[str] = None,
+        modified: Optional[str] = None
     ) -> Dict[str, Any]:
         """Notion-Properties erstellen."""
+        # Minimal: Nur Name (Title) ist erforderlich
         properties = {
             "Name": {
                 "title": [
@@ -171,31 +172,11 @@ class ContentMapper:
                 ]
             }
         }
-
-        # Optional: Section als Select
-        if section:
-            properties["Section"] = {
-                "select": {"name": section[:100]}
-            }
-
-        # Optional: Notebook als Select
-        if notebook:
-            properties["Notebook"] = {
-                "select": {"name": notebook[:100]}
-            }
-
-        # Optional: Created-Datum
-        if created:
-            properties["Created"] = {
-                "date": {"start": created}
-            }
-
-        # Optional: Modified-Datum
-        if modified:
-            properties["Modified"] = {
-                "date": {"start": modified}
-            }
-
+        
+        # Optional: Nur setzen wenn die Property im Target existiert
+        # (Die Properties "Section", "Notebook", "Created", "Modified" sind optional)
+        # Sie werden in der CLI verwaltet oder später manuell hinzugefügt
+        
         return properties
 
     def _add_table_to_page(self, page_id: str, table: List[List[str]]) -> None:
