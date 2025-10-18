@@ -27,11 +27,26 @@ class MicrosoftAuthenticator:
 
     def __init__(self, config: AuthConfig):
         self.config = config
+        self.cache_file = os.path.join(os.path.expanduser("~"), ".ms_notion_migration_token_cache.bin")
+        
+        # Token-Cache laden/erstellen
+        self.cache = msal.SerializableTokenCache()
+        if os.path.exists(self.cache_file):
+            with open(self.cache_file, "r") as f:
+                self.cache.deserialize(f.read())
+        
         self.app = msal.PublicClientApplication(
             client_id=config.ms_client_id,
-            authority=f"https://login.microsoftonline.com/{config.ms_tenant_id}"
+            authority=f"https://login.microsoftonline.com/{config.ms_tenant_id}",
+            token_cache=self.cache
         )
         self._token = None
+
+    def _save_cache(self):
+        """Token-Cache speichern."""
+        if self.cache.has_state_changed:
+            with open(self.cache_file, "w") as f:
+                f.write(self.cache.serialize())
 
     def acquire_token_device_code(self) -> Dict[str, Any]:
         """Token über Device Code Flow erwerben."""
@@ -50,11 +65,25 @@ class MicrosoftAuthenticator:
             raise RuntimeError(f"Could not acquire token: {result}")
 
         self._token = result
+        self._save_cache()
         return result
 
     @property
     def token(self) -> str:
-        """Access Token abrufen."""
+        """Access Token abrufen (mit automatischem Refresh)."""
+        # Versuche zuerst, Token aus Cache zu holen
+        accounts = self.app.get_accounts()
+        if accounts:
+            result = self.app.acquire_token_silent(
+                scopes=self.config.ms_scopes,
+                account=accounts[0]
+            )
+            if result and "access_token" in result:
+                self._token = result
+                self._save_cache()
+                return result["access_token"]
+        
+        # Wenn kein Token im Cache, neuen Token anfordern
         if not self._token:
             self._token = self.acquire_token_device_code()
         return self._token["access_token"]

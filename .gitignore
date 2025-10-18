@@ -45,6 +45,7 @@ MANIFEST
 state.json
 *.cache
 .cache/
+.ms_notion_migration_token_cache.bin
 
 # Notion & API Keys
 secrets/
