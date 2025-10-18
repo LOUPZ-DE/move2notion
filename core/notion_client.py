@@ -24,7 +24,10 @@ class NotionClient:
         Akzeptiert: 'Y28f2d0f82ce180749f1ff29284908c89' → 'Y28f2d0f-82ce-1807-49f1-ff29284908c89'
         """
         if not uuid_str:
-            return uuid_str
+            raise NotionAPIError("Database ID cannot be empty")
+        
+        # Entferne Leerzeichen
+        uuid_str = uuid_str.strip()
         
         # Entferne vorhandene Bindestriche
         clean = uuid_str.replace("-", "")
@@ -33,11 +36,16 @@ class NotionClient:
         if len(uuid_str) == 36 and uuid_str.count("-") == 4:
             return uuid_str
         
-        # Wenn 32 Zeichen ohne Bindestriche, füge sie hinzu
+        # Akzeptiere 32-Zeichen UUIDs
         if len(clean) == 32:
             return f"{clean[0:8]}-{clean[8:12]}-{clean[12:16]}-{clean[16:20]}-{clean[20:32]}"
         
-        # Ansonsten zurückgeben wie es ist
+        # Für alle anderen Formate: Warnung + original zurück
+        if len(clean) < 32 or len(clean) > 36:
+            print(f"[⚠] Warnung: Unerwartetes UUID-Format ({len(clean)} Zeichen): {uuid_str}")
+            print(f"[i] Erwartet: 32 oder 36 Zeichen")
+            print(f"[i] Tipps: Prüfen Sie die Database-ID in Notion (Share-Button → Copy link)")
+        
         return uuid_str
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
