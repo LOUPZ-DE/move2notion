@@ -18,6 +18,28 @@ class NotionClient:
     def __init__(self, auth_manager_instance=None):
         self.auth = auth_manager_instance or auth_manager
 
+    def _normalize_uuid(self, uuid_str: str) -> str:
+        """
+        Normalisiere Notion-UUID Format.
+        Akzeptiert: 'Y28f2d0f82ce180749f1ff29284908c89' → 'Y28f2d0f-82ce-1807-49f1-ff29284908c89'
+        """
+        if not uuid_str:
+            return uuid_str
+        
+        # Entferne vorhandene Bindestriche
+        clean = uuid_str.replace("-", "")
+        
+        # Wenn bereits normalisiert (36 Zeichen mit Bindestrichen)
+        if len(uuid_str) == 36 and uuid_str.count("-") == 4:
+            return uuid_str
+        
+        # Wenn 32 Zeichen ohne Bindestriche, füge sie hinzu
+        if len(clean) == 32:
+            return f"{clean[0:8]}-{clean[8:12]}-{clean[12:16]}-{clean[16:20]}-{clean[20:32]}"
+        
+        # Ansonsten zurückgeben wie es ist
+        return uuid_str
+
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """Generische HTTP-Anfrage an Notion API."""
         url = f"https://api.notion.com/v1{endpoint}"
@@ -38,10 +60,12 @@ class NotionClient:
 
     def get_database(self, database_id: str) -> Dict[str, Any]:
         """Datenbank-Informationen abrufen."""
+        database_id = self._normalize_uuid(database_id)
         return self._make_request("GET", f"/databases/{database_id}")
 
     def query_database(self, database_id: str, filter_obj: Optional[Dict] = None) -> Dict[str, Any]:
         """Datenbank abfragen."""
+        database_id = self._normalize_uuid(database_id)
         data = {}
         if filter_obj:
             data["filter"] = filter_obj
@@ -63,6 +87,9 @@ class NotionClient:
 
     def create_page(self, parent_id: str, properties: Dict[str, Any], children: Optional[List[Dict]] = None) -> str:
         """Neue Seite erstellen."""
+        # Korrigiere UUID-Format falls nötig
+        parent_id = self._normalize_uuid(parent_id)
+        
         data = {
             "parent": {"type": "database_id", "database_id": parent_id},
             "properties": properties
