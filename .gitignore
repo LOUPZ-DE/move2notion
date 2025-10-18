@@ -1,0 +1,78 @@
+# Virtual Environment
+.venv/
+venv/
+env/
+ENV/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# State & Cache
+~/.onenote2notion/
+state.json
+*.cache
+.cache/
+
+# Notion & API Keys
+secrets/
+credentials/
+*.token
+*.key
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*_clean.csv
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Misc
+.history/
+.mypy_cache/
+.dmypy.json
+dmypy.json
