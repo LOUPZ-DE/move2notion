@@ -72,29 +72,42 @@ class OneNoteHTMLParser:
             if isinstance(child, NavigableString):
                 text = str(child).strip()
                 if text:
-                    parts.append({"type": "text", "text": {"content": text}})
+                    # Teile sofort wenn zu lang
+                    if len(text) > 2000:
+                        for i in range(0, len(text), 2000):
+                            chunk = text[i:i+2000]
+                            parts.append({"type": "text", "text": {"content": chunk}})
+                    else:
+                        parts.append({"type": "text", "text": {"content": text}})
             elif isinstance(child, Tag):
                 if child.name.lower() == "a":
                     href = child.get("href", "")
                     text = child.get_text()
-                    parts.append({
-                        "type": "text",
-                        "text": {"content": text, "link": {"url": href}}
-                    })
+                    # Teile Link-Text wenn nötig
+                    if len(text) > 2000:
+                        for i in range(0, len(text), 2000):
+                            chunk = text[i:i+2000]
+                            parts.append({"type": "text", "text": {"content": chunk, "link": {"url": href}}})
+                    else:
+                        parts.append({"type": "text", "text": {"content": text, "link": {"url": href}}})
                 else:
                     # Rekursiv für verschachtelte Tags
                     parts.extend(self._build_rich_text(child))
 
-        # Text auf 2000 Zeichen begrenzen (Notion-Limit)
+        # Finale Validierung: Stelle sicher, dass KEIN Element > 2000 ist
         result = []
         for part in parts:
-            if part["type"] == "text":
-                content = part["text"]["content"]
-                # Teile lange Texte auf
+            if part.get("type") == "text":
+                content = part.get("text", {}).get("content", "")
                 if len(content) > 2000:
+                    # Falls immer noch zu lang, nochmal aufteilen
+                    link = part.get("text", {}).get("link")
                     for i in range(0, len(content), 2000):
                         chunk = content[i:i+2000]
-                        result.append({"type": "text", "text": {"content": chunk}})
+                        if link:
+                            result.append({"type": "text", "text": {"content": chunk, "link": link}})
+                        else:
+                            result.append({"type": "text", "text": {"content": chunk}})
                 else:
                     result.append(part)
             else:
