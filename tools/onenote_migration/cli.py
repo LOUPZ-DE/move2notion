@@ -11,8 +11,12 @@ Dieses Modul orchestriert die OneNote-Migration:
 """
 import argparse
 import sys
+import warnings
 from pathlib import Path
 from typing import Optional, List, Dict, Any
+
+# Unterdrücke urllib3 NotOpenSSLWarning (LibreSSL vs OpenSSL)
+warnings.filterwarnings("ignore", category=Warning, module="urllib3")
 
 # Core-Module importieren
 from core.auth import auth_manager
