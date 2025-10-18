@@ -86,11 +86,21 @@ class OneNoteHTMLParser:
                     parts.extend(self._build_rich_text(child))
 
         # Text auf 2000 Zeichen begrenzen (Notion-Limit)
+        result = []
         for part in parts:
-            if part["type"] == "text" and len(part["text"]["content"]) > 2000:
-                part["text"]["content"] = part["text"]["content"][:2000]
+            if part["type"] == "text":
+                content = part["text"]["content"]
+                # Teile lange Texte auf
+                if len(content) > 2000:
+                    for i in range(0, len(content), 2000):
+                        chunk = content[i:i+2000]
+                        result.append({"type": "text", "text": {"content": chunk}})
+                else:
+                    result.append(part)
+            else:
+                result.append(part)
 
-        return parts or [{"type": "text", "text": {"content": ""}}]
+        return result or [{"type": "text", "text": {"content": ""}}]
 
     def _create_paragraph(self, rich_text: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Paragraph-Block erstellen."""

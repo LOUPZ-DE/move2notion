@@ -310,9 +310,10 @@ Beispiele:
                 notebook_name=self._get_notebook_name(notebook_id)
             )
             
-            if notion_page_id and self.state_manager:
-                # State aktualisieren
-                self.state_manager.mark_page_processed(state_key, "checksum_placeholder")
+            # State-Update könnte hier erfolgen (optional für später)
+            # if notion_page_id and self.state_manager:
+            #     self.state_manager.mark_page_processed(state_key, checksum)
+            pass
 
     def _get_section_name(self, section_id: str) -> str:
         """Section-Name aus Cache oder aktueller Verarbeitung holen."""
