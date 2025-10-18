@@ -70,12 +70,26 @@ Automatische Erkennung von Checkboxen in mehreren Formaten:
 - Markdown: `[x]`, `[ ]`
 - Data-Attribute: `data-tag="to-do"`
 
-### ✅ Asset-Handling
+### ✅ Asset-Handling (Bilder & Dateien)
 
-- **Bilder**: Download + Upload zu Notion
-- **Dateien**: Download + Notion-File-Block
-- **Caching**: Bereits geladene Assets werden gecacht
-- **Content-Type-Sniffing**: Automatische Typ-Bestimmung
+Das Tool **übernimmt automatisch Bilder und Dateien** aus OneNote-Seiten:
+
+- **Bilder**: Werden heruntergeladen und zu **Notion hochgeladen** als File-Upload-Blöcke
+- **Dateien**: Links zu Dateien werden erkannt und hochgeladen
+- **Caching**: Bereits geladene Assets werden gecacht (gleiche URL = 1x Upload)
+- **Content-Type-Sniffing**: Automatische Typ-Bestimmung (PNG, JPG, PDF, DOCX, etc.)
+- **Error-Handling**: Upload-Fehler unterbrechen nicht den Import (Logger wird genutzt)
+
+**Beispiel:**
+```
+OneNote-Seite mit 3 Bildern
+    ↓
+Bilder werden heruntergeladen
+    ↓
+Zu Notion hochgeladen
+    ↓
+Notion-Page enthält 3 Bild-Blöcke ✅
+```
 
 ### ✅ Idempotenz
 
