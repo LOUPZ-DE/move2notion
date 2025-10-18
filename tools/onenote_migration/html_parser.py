@@ -144,9 +144,15 @@ def html_to_blocks_and_tables(
     
     def handle_images(el: Tag):
         """Bilder INLINE verarbeiten - direkt während des Parsens!"""
-        # <img> Tags
+        # <img> Tags - Nur direkte Kinder um Duplikate zu vermeiden
         imgs = el.find_all("img", recursive=False)
         for img in imgs:
+            # Prüfe ob bereits verarbeitet (um Duplikate zu vermeiden)
+            img_id = id(img)
+            if img_id in processed_imgs:
+                continue
+            processed_imgs.add(img_id)
+            
             src = img.get("data-fullres-src") or img.get("data-src") or img.get("src")
             if src:
                 print(f"[📸] Bild gefunden: {src[:100]}")
@@ -163,7 +169,7 @@ def html_to_blocks_and_tables(
                     print(f"[❌] Bild-Download fehlgeschlagen: {src[:100]}")
         
         # <object> Tags (können auch Bilder oder Dateien sein)
-        for obj in el.find_all("object", recursive=False):
+        for obj in el.find_all("object"):  # Default ist recursive=True
             data_url = obj.get("data") or obj.get("data-fullres-src")
             t = (obj.get("type") or "").lower() or None
             if data_url:
@@ -181,6 +187,9 @@ def html_to_blocks_and_tables(
     checkbox_unicode_false = ("☐", "⬜", "☒", "◻")
     
     body = soup.body or soup
+    
+    # Track bereits verarbeitete Bilder (um Duplikate zu vermeiden)
+    processed_imgs = set()
     
     # Hauptloop: Alle Elemente durchgehen
     for el in body.descendants:
