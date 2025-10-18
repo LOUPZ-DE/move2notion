@@ -7,6 +7,10 @@ from typing import Dict, Any, Optional
 import msal
 import requests
 from dataclasses import dataclass
+from dotenv import load_dotenv
+
+# Lade .env-Datei
+load_dotenv()
 
 
 @dataclass
