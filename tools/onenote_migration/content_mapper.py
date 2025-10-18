@@ -92,7 +92,9 @@ class ContentMapper:
             # 7. Blöcke hinzufügen (Content + Assets)
             all_blocks = blocks + asset_blocks
             if all_blocks:
-                self.notion.append_blocks(notion_page_id, all_blocks)
+                # FAIL-SAFE: Validiere alle Blöcke vor dem Senden
+                validated_blocks = self._validate_blocks(all_blocks)
+                self.notion.append_blocks(notion_page_id, validated_blocks)
 
             # 8. Tabellen hinzufügen
             if tables:
@@ -178,6 +180,89 @@ class ContentMapper:
         # Sie werden in der CLI verwaltet oder später manuell hinzugefügt
         
         return properties
+
+    def _validate_blocks(self, blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Validiere alle Blöcke und stelle sicher dass rich_text <= 2000 Zeichen.
+        
+        FAIL-SAFE gegen Notion API Validierungsfehler.
+        """
+        validated = []
+        
+        for block in blocks:
+            block_type = block.get("type")
+            if not block_type:
+                continue
+            
+            # Block-Content holen
+            content = block.get(block_type, {})
+            rich_text = content.get("rich_text", [])
+            
+            # Validiere jedes rich_text-Element
+            new_rich_text = []
+            for rt in rich_text:
+                if rt.get("type") == "text":
+                    text_content = rt.get("text", {}).get("content", "")
+                    text_length = len(text_content)
+                    
+                    if text_length > 2000:
+                        # Zu lang! Teile in 2000er-Chunks
+                        link = rt.get("text", {}).get("link")
+                        for i in range(0, text_length, 2000):
+                            chunk = text_content[i:i+2000]
+                            if link:
+                                new_rich_text.append({"type": "text", "text": {"content": chunk, "link": link}})
+                            else:
+                                new_rich_text.append({"type": "text", "text": {"content": chunk}})
+                    else:
+                        new_rich_text.append(rt)
+                else:
+                    new_rich_text.append(rt)
+            
+            # Wenn rich_text zu lang wurde, teile in mehrere Blöcke
+            if len(new_rich_text) > 0:
+                # Berechne Gesamt-Länge
+                total_length = sum(len(rt.get("text", {}).get("content", "")) for rt in new_rich_text if rt.get("type") == "text")
+                
+                if total_length <= 2000:
+                    # Alles OK: Ein Block
+                    content["rich_text"] = new_rich_text
+                    validated.append(block)
+                else:
+                    # Zu lang: Teile in mehrere Blöcke
+                    current_block_rt = []
+                    current_length = 0
+                    
+                    for rt in new_rich_text:
+                        rt_length = len(rt.get("text", {}).get("content", "")) if rt.get("type") == "text" else 0
+                        
+                        if current_length + rt_length > 2000 and current_block_rt:
+                            # Speichere aktuellen Block
+                            new_block = {
+                                "object": "block",
+                                "type": block_type,
+                                block_type: {"rich_text": current_block_rt}
+                            }
+                            validated.append(new_block)
+                            current_block_rt = [rt]
+                            current_length = rt_length
+                        else:
+                            current_block_rt.append(rt)
+                            current_length += rt_length
+                    
+                    # Letzten Block hinzufügen
+                    if current_block_rt:
+                        new_block = {
+                            "object": "block",
+                            "type": block_type,
+                            block_type: {"rich_text": current_block_rt}
+                        }
+                        validated.append(new_block)
+            else:
+                # Leerer Block - überspringe
+                pass
+        
+        return validated
 
     def _add_table_to_page(self, page_id: str, table: List[List[str]]) -> None:
         """Tabelle als Blöcke zu Notion-Page hinzufügen."""
