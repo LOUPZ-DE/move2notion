@@ -57,7 +57,29 @@ ON2N_STATE=~/.onenote2notion/state.json
 
 ## 🛠️ Verfügbare Tools
 
-### 1. **Planner → Notion**
+### 🌐 **Web-GUI** (NEU!)
+
+Moderne Weboberfläche für alle Migrations-Tools mit grafischer Benutzerführung.
+
+```bash
+# Web-Server starten
+cd web
+python app.py
+# → http://localhost:8080
+```
+
+**Features:**
+- 🔐 **Microsoft OAuth-Authentifizierung**
+- 📓 **OneNote-Migration** mit grafischer Notebook-Auswahl
+- 📋 **Planner-Migration** mit Status-Anzeige
+- 📊 **Live-Fortschrittsanzeige** während der Migration
+- 🎨 **Responsive UI** für Desktop und Mobile
+
+📖 [Vollständige Anleitung](web/README.md) | [Quick Start](web/QUICKSTART.md)
+
+---
+
+### 1. **Planner → Notion** (CLI)
 
 CSV-basierte Aufgabenmigration mit Personen-Mapping.
 
@@ -76,7 +98,7 @@ python -m tools.planner_migration.cli \
 
 📖 [Details](docs/PLANNER.md)
 
-### 2. **OneNote → Notion**
+### 2. **OneNote → Notion** (CLI)
 
 Rich-Content-Migration aus SharePoint OneNote.
 
@@ -101,24 +123,48 @@ python -m tools.onenote_migration.cli \
 
 ---
 
+## 🖥️ CLI vs. Web-GUI
+
+| Feature | CLI | Web-GUI |
+|---------|-----|---------|
+| **Authentifizierung** | Device Code Flow | OAuth Code Flow |
+| **Notebook-Auswahl** | Manuell (ID angeben) | Grafische Auswahl |
+| **Fortschritt** | Terminal-Output | Live-Dashboard |
+| **Benutzerfreundlichkeit** | Fortgeschritten | Einsteigerfreundlich |
+| **Automatisierung** | ✅ Skriptbar | ❌ Interaktiv |
+| **Mehrbenutzer** | ❌ | ❌ (Single-User) |
+
+**Empfehlung:** 
+- **Web-GUI** für gelegentliche, interaktive Migrationen
+- **CLI** für Automatisierung und Batch-Verarbeitung
+
+---
+
 ## 🏗️ Architektur
 
 ```
 ms_notion_migration/
 ├── core/                    # Gemeinsame Abstraktionen
-│   ├── auth.py             # MSAL + Notion
+│   ├── auth.py             # MSAL + Notion (CLI + Web)
 │   ├── notion_client.py    # Notion API
 │   ├── ms_graph_client.py  # Microsoft Graph
 │   └── state_manager.py    # Idempotenz
 │
-├── tools/                  # Migrationstools
+├── tools/                  # Migrationstools (CLI)
 │   ├── planner_migration/
 │   └── onenote_migration/
+│
+├── web/                    # Flask Web-GUI
+│   ├── app.py             # Flask-Anwendung
+│   ├── templates/         # HTML-Templates
+│   ├── static/            # CSS & JavaScript
+│   ├── README.md          # Web-GUI Dokumentation
+│   └── QUICKSTART.md      # 5-Minuten-Setup
 │
 └── docs/                   # Dokumentation
     ├── PLANNER.md
     ├── ONENOTE.md
-    └── DEV.md
+    └── WEB_GUI.md
 ```
 
 ---
