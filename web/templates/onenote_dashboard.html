@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+
+{% block title %}OneNote Migration - MS → Notion Migration{% endblock %}
+
+{% block content %}
+<div class="migration-dashboard">
+    <h2>OneNote Migration</h2>
+    <p class="subtitle">Migriere OneNote-Notebooks zu Notion</p>
+
+    <div class="form-section">
+        <h3>1. SharePoint Site konfigurieren</h3>
+        <form id="site-form">
+            <div class="form-group">
+                <label for="site_url">SharePoint Site URL:</label>
+                <input type="text" id="site_url" name="site_url" 
+                       placeholder="https://contoso.sharepoint.com/sites/MeineSite" 
+                       class="form-control" required>
+                <small>Die URL der SharePoint-Site mit den OneNote-Notebooks</small>
+            </div>
+            <button type="submit" class="btn btn-primary">Notebooks laden</button>
+        </form>
+    </div>
+
+    <div id="notebooks-section" class="hidden">
+        <h3>2. Notebooks auswählen</h3>
+        <div id="notebooks-list" class="notebooks-grid">
+            <!-- Wird dynamisch gefüllt -->
+        </div>
+        
+        <div class="form-section">
+            <h3>3. Notion-Ziel konfigurieren</h3>
+            <form id="migration-form">
+                <div class="form-group">
+                    <label for="target_page_id">Notion Ziel-Seiten-ID:</label>
+                    <input type="text" id="target_page_id" name="target_page_id" 
+                           placeholder="a1b2c3d4..." 
+                           class="form-control" required>
+                    <small>Die ID der Notion-Seite, unter der die Notebooks erstellt werden</small>
+                </div>
+                <button type="submit" class="btn btn-success btn-large">Migration starten</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="progress-section" class="hidden">
+        <h3>Migration läuft...</h3>
+        <div class="progress-bar">
+            <div id="progress" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <div id="status-text" class="status-text">Initialisiere...</div>
+        <div id="log-output" class="log-output"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const siteForm = document.getElementById('site-form');
+    const migrationForm = document.getElementById('migration-form');
+    const notebooksSection = document.getElementById('notebooks-section');
+    const progressSection = document.getElementById('progress-section');
+    
+    let siteId = null;
+    let selectedNotebooks = [];
+
+    // Site-URL validieren und Notebooks laden
+    siteForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const siteUrl = document.getElementById('site_url').value;
+        
+        try {
+            const response = await fetch(`/api/onenote/notebooks?site_url=${encodeURIComponent(siteUrl)}`);
+            const data = await response.json();
+            
+            if (response.ok) {
+                siteId = data.site_id;
+                displayNotebooks(data.notebooks);
+                notebooksSection.classList.remove('hidden');
+            } else {
+                alert('Fehler: ' + data.error);
+            }
+        } catch (error) {
+            alert('Fehler beim Laden der Notebooks: ' + error.message);
+        }
+    });
+
+    function displayNotebooks(notebooks) {
+        const list = document.getElementById('notebooks-list');
+        list.innerHTML = '';
+        
+        notebooks.forEach(nb => {
+            const card = document.createElement('div');
+            card.className = 'notebook-card';
+            card.innerHTML = `
+                <input type="checkbox" id="nb_${nb.id}" value="${nb.id}">
+                <label for="nb_${nb.id}">
+                    <strong>${nb.displayName}</strong>
+                    <small>${nb.id}</small>
+                </label>
+            `;
+            list.appendChild(card);
+            
+            card.querySelector('input').addEventListener('change', function(e) {
+                if (e.target.checked) {
+                    selectedNotebooks.push(nb.id);
+                } else {
+                    selectedNotebooks = selectedNotebooks.filter(id => id !== nb.id);
+                }
+            });
+        });
+    }
+
+    // Migration starten
+    migrationForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        if (selectedNotebooks.length === 0) {
+            alert('Bitte wähle mindestens ein Notebook aus.');
+            return;
+        }
+        
+        const targetPageId = document.getElementById('target_page_id').value;
+        
+        progressSection.classList.remove('hidden');
+        
+        try {
+            const response = await fetch('/api/onenote/migrate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    site_id: siteId,
+                    notebook_ids: selectedNotebooks,
+                    target_page_id: targetPageId
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                document.getElementById('status-text').textContent = data.message;
+                // TODO: Polling für Status-Updates
+            } else {
+                alert('Fehler: ' + data.error);
+            }
+        } catch (error) {
+            alert('Fehler beim Starten der Migration: ' + error.message);
+        }
+    });
+});
+</script>
+{% endblock %}

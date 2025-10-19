@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Planner Migration - MS → Notion Migration{% endblock %}
+
+{% block content %}
+<div class="migration-dashboard">
+    <h2>Planner Migration</h2>
+    <p class="subtitle">Migriere Microsoft Planner Tasks zu Notion</p>
+
+    <div class="form-section">
+        <h3>Konfiguration</h3>
+        <form id="planner-migration-form">
+            <div class="form-group">
+                <label for="planner_plan_id">Planner Plan ID:</label>
+                <input type="text" id="planner_plan_id" name="planner_plan_id" 
+                       placeholder="Plan-ID aus Microsoft Planner" 
+                       class="form-control" required>
+                <small>Die ID des Planner-Plans, der migriert werden soll</small>
+            </div>
+
+            <div class="form-group">
+                <label for="notion_database_id">Notion Datenbank-ID:</label>
+                <input type="text" id="notion_database_id" name="notion_database_id" 
+                       placeholder="Notion-Datenbank-ID" 
+                       class="form-control" required>
+                <small>Die ID der Notion-Datenbank, in die die Tasks importiert werden</small>
+            </div>
+
+            <div class="form-group">
+                <label for="people_mapping">Personen-Mapping (optional):</label>
+                <input type="file" id="people_mapping" name="people_mapping" 
+                       accept=".csv" class="form-control">
+                <small>CSV-Datei mit Microsoft-Benutzer → Notion-Benutzer Mapping</small>
+            </div>
+
+            <button type="submit" class="btn btn-success btn-large">Migration starten</button>
+        </form>
+    </div>
+
+    <div id="planner-progress-section" class="hidden">
+        <h3>Migration läuft...</h3>
+        <div class="progress-bar">
+            <div id="planner-progress" class="progress-fill" style="width: 0%"></div>
+        </div>
+        <div id="planner-status-text" class="status-text">Initialisiere...</div>
+        <div id="planner-log-output" class="log-output"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('planner-migration-form');
+    const progressSection = document.getElementById('planner-progress-section');
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const planId = document.getElementById('planner_plan_id').value;
+        const databaseId = document.getElementById('notion_database_id').value;
+        
+        progressSection.classList.remove('hidden');
+        
+        try {
+            const response = await fetch('/api/planner/migrate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    plan_id: planId,
+                    database_id: databaseId
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+                document.getElementById('planner-status-text').textContent = data.message;
+                // TODO: Polling für Status-Updates
+            } else {
+                alert('Fehler: ' + data.error);
+            }
+        } catch (error) {
+            alert('Fehler beim Starten der Migration: ' + error.message);
+        }
+    });
+});
+</script>
+{% endblock %}

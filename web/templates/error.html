@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Fehler - MS → Notion Migration{% endblock %}
+
+{% block content %}
+<div class="error-container">
+    <div class="error-box">
+        <div class="error-icon">⚠️</div>
+        <h2>Ein Fehler ist aufgetreten</h2>
+        <p class="error-message">{{ error }}</p>
+        <div class="error-actions">
+            <a href="{{ url_for('index') }}" class="btn btn-primary">Zurück zum Dashboard</a>
+            <a href="{{ url_for('login') }}" class="btn btn-secondary">Neu anmelden</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

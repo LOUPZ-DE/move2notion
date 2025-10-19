@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - MS → Notion Migration{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <h2>Dashboard</h2>
+    <p class="subtitle">Wähle eine Migration aus, um zu beginnen.</p>
+
+    <div class="cards">
+        <div class="card">
+            <div class="card-icon">📓</div>
+            <h3>OneNote Migration</h3>
+            <p>Migriere OneNote-Notebooks und Seiten zu Notion.</p>
+            <ul class="feature-list">
+                <li>Notebooks & Sections</li>
+                <li>Formatierungen & Bilder</li>
+                <li>Metadaten & Timestamps</li>
+            </ul>
+            <a href="{{ url_for('onenote_dashboard') }}" class="btn btn-primary">Starten</a>
+        </div>
+
+        <div class="card">
+            <div class="card-icon">📋</div>
+            <h3>Planner Migration</h3>
+            <p>Migriere Microsoft Planner Tasks zu Notion.</p>
+            <ul class="feature-list">
+                <li>Tasks & Buckets</li>
+                <li>Zuweisungen & Labels</li>
+                <li>Checklists & Notizen</li>
+            </ul>
+            <a href="{{ url_for('planner_dashboard') }}" class="btn btn-primary">Starten</a>
+        </div>
+    </div>
+
+    <div class="info-section">
+        <h3>Status</h3>
+        <div class="status-grid">
+            <div class="status-item">
+                <span class="status-label">Authentifizierung:</span>
+                <span class="status-value status-success">✓ Aktiv</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Microsoft Graph:</span>
+                <span class="status-value status-success">✓ Verbunden</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Notion API:</span>
+                <span class="status-value status-success">✓ Verbunden</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
