@@ -135,6 +135,17 @@ Plan ID finden:
         group_id = plan.get("owner")
         print(f"[✅] Plan gefunden: {plan_title}")
         
+        # 2b. Plan-Details für Category-Descriptions abrufen
+        try:
+            plan_details = ms_client.get_planner_plan_details(self.args.plan_id)
+            category_descriptions = plan_details.get("categoryDescriptions", {})
+            if self.args.verbose:
+                print(f"[i] {len(category_descriptions)} Categories gefunden")
+        except Exception as e:
+            if self.args.verbose:
+                print(f"[⚠️] Plan-Details konnten nicht abgerufen werden: {e}")
+            category_descriptions = {}
+        
         # 3. Buckets abrufen
         print("[i] Rufe Buckets ab...")
         buckets = ms_client.list_planner_buckets(self.args.plan_id)
@@ -177,7 +188,6 @@ Plan ID finden:
         api_mapper = create_planner_api_mapper()
         api_mapper.set_buckets(buckets)
         api_mapper.set_users(group_members)
-        category_descriptions = plan.get("categoryDescriptions", {})
         api_mapper.set_category_descriptions(category_descriptions)
         
         rows = api_mapper.map_tasks_to_rows(tasks, tasks_details)

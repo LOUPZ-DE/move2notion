@@ -192,6 +192,13 @@ def start_planner_migration():
         plan_title = plan.get("title", "Unbekannter Plan")
         group_id = plan.get("owner")  # Group ID für Mitglieder-Abruf
         
+        # 1b. Plan-Details für Category-Descriptions abrufen
+        try:
+            plan_details = ms_client.get_planner_plan_details(plan_id)
+            category_descriptions = plan_details.get("categoryDescriptions", {})
+        except Exception:
+            category_descriptions = {}
+        
         # 2. Buckets abrufen
         buckets = ms_client.list_planner_buckets(plan_id)
         
@@ -225,7 +232,6 @@ def start_planner_migration():
         api_mapper.set_users(group_members)
         
         # Category-Descriptions (Tags) setzen
-        category_descriptions = plan.get("categoryDescriptions", {})
         api_mapper.set_category_descriptions(category_descriptions)
         
         # Tasks zu Row-Format konvertieren

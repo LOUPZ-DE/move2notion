@@ -166,8 +166,13 @@ class MSGraphClient:
     # ===== Planner-API-Methoden =====
 
     def get_planner_plan(self, plan_id: str) -> Dict[str, Any]:
+        """Planner-Plan Details abrufen."""
+        endpoint = f"/planner/plans/{plan_id}"
+        return self._make_request("GET", endpoint)
+    
+    def get_planner_plan_details(self, plan_id: str) -> Dict[str, Any]:
         """Planner-Plan Details abrufen (inkl. Category-Descriptions für Tags)."""
-        endpoint = f"/planner/plans/{plan_id}?$select=id,title,owner,createdDateTime,categoryDescriptions"
+        endpoint = f"/planner/plans/{plan_id}/details"
         return self._make_request("GET", endpoint)
 
     def list_planner_buckets(self, plan_id: str) -> List[Dict[str, Any]]:
