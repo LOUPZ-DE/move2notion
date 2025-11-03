@@ -25,12 +25,12 @@ Das Planner-Tool greift **direkt per API** auf Microsoft Planner zu - kein CSV-E
 ### CLI (Kommandozeile)
 
 ```bash
-# Plan direkt aus Planner importieren
+# Plan direkt aus Planner importieren (Personen als Text)
 python -m tools.planner_migration.cli \
   --plan-id "PLAN_ID" \
   --database "NOTION_DATABASE_ID"
 
-# Mit Personen-Mapping
+# Mit Personen-Mapping (optional - für @-Mentions in Notion)
 python -m tools.planner_migration.cli \
   --plan-id "PLAN_ID" \
   --database "NOTION_DATABASE_ID" \
@@ -73,8 +73,8 @@ https://tasks.office.com/.../taskboard?groupId=xxx&planId=abc123def456
 |----------|-------------|-------------|
 | `--plan-id` | ✅ | Planner Plan ID |
 | `--database` | ✅ | Ziel-Notion-DB-ID |
-| `--people-map` | - | Personen-Mapping-CSV |
-| `--verbose` | - | Detaillierte Ausgaben |
+| `--people-map` | ❌ (Optional) | Personen-Mapping-CSV (für @-Mentions) |
+| `--verbose` | ❌ (Optional) | Detaillierte Ausgaben |
 
 ---
 
@@ -87,7 +87,21 @@ https://tasks.office.com/.../taskboard?groupId=xxx&planId=abc123def456
 - **Vollständige Daten**: Alle Felder inkl. Checklisten, Beschreibung, Tags
 - **Automatische Konvertierung**: Planner-Daten → Notion-Format
 
-### ✅ Personen-Mapping
+### ✅ Personen-Mapping (Optional)
+
+**Wichtig:** Personen-Mapping ist **optional**!
+
+#### Ohne CSV (Standard)
+- Benutzer-Namen werden als **Text** eingetragen
+- Feld: **"Zugewiesen an (Text)"**
+- ✅ Migration funktioniert vollständig
+- ❌ Keine @-Mentions oder Notifications in Notion
+
+#### Mit CSV (empfohlen für @-Mentions)
+- Benutzer werden als **Notion-Personen** eingetragen
+- Feld: **"Zugewiesen an"** (People Property)
+- ✅ @-Mentions funktionieren
+- ✅ Notifications in Notion
 
 Erstellen Sie `Notion_Personenmapping_Template.csv`:
 
@@ -271,8 +285,10 @@ Prüfen Sie, ob Planner-Plan **Labels** verwendet:
 - Prüfen Sie Azure AD Permissions (Tasks.Read, Group.Read.All)
 - Token eventuell abgelaufen → neu authentifizieren
 
-### Personen-Mapping funktioniert nicht
-- Prüfen Sie, dass `Notion_Email` gültig ist
+### Personen werden nicht als @-Mentions angezeigt
+- **Standard-Verhalten:** Ohne `--people-map` werden Namen als Text eingetragen
+- **Für @-Mentions:** CSV-Mapping verwenden (`--people-map mapping.csv`)
+- Prüfen Sie, dass `Notion_Email` in der CSV gültig ist
 - E-Mail muss im Notion Workspace registriert sein
 
 ### Checklisten werden nicht übernommen
