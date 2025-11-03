@@ -44,9 +44,20 @@ python -m tools.planner_migration.cli \
 ```
 
 **Plan ID finden:**
-1. Öffnen Sie einen Planner-Plan in Microsoft Planner
-2. URL: `https://tasks.office.com/.../taskboard?groupId=xxx&planId=PLAN_ID`
-3. Kopieren Sie die `planId` aus der URL
+
+Microsoft Planner nutzt zwei verschiedene URL-Formate:
+
+**Neues Format** (planner.cloud.microsoft):
+```
+https://planner.cloud.microsoft/webui/plan/k354O9ND3EaLWprSgZrplpgAEMa6/view/board?tid=...
+```
+→ Plan ID steht im Pfad: `k354O9ND3EaLWprSgZrplpgAEMa6` (zwischen `/plan/` und `/view/`)
+
+**Altes Format** (tasks.office.com):
+```
+https://tasks.office.com/.../taskboard?groupId=xxx&planId=abc123def456
+```
+→ Plan ID als Query-Parameter: `planId=abc123def456`
 
 ### Web-GUI
 
@@ -214,11 +225,21 @@ Erforderliche Scopes:
 
 ### Plan ID herausfinden
 
-1. Öffne Planner-Plan in Microsoft Planner
-2. Kopiere `planId` aus URL:
-   ```
-   https://tasks.office.com/.../taskboard?groupId=xxx&planId=PLAN_ID
-   ```
+Öffne Planner-Plan in Microsoft Planner und kopiere die Plan ID aus der URL:
+
+**Neues Format** (planner.cloud.microsoft):
+```
+https://planner.cloud.microsoft/webui/plan/PLAN_ID/view/board?tid=...
+                                       └──────┬──────┘
+                                           Plan ID
+```
+
+**Altes Format** (tasks.office.com):
+```
+https://tasks.office.com/.../taskboard?groupId=xxx&planId=PLAN_ID
+                                                           └──┬──┘
+                                                           Plan ID
+```
 
 ### Personen-Mapping erstellen
 
