@@ -224,6 +224,10 @@ def start_planner_migration():
         api_mapper.set_buckets(buckets)
         api_mapper.set_users(group_members)
         
+        # Category-Descriptions (Tags) setzen
+        category_descriptions = plan.get("categoryDescriptions", {})
+        api_mapper.set_category_descriptions(category_descriptions)
+        
         # Tasks zu Row-Format konvertieren
         rows = api_mapper.map_tasks_to_rows(tasks, tasks_details)
         

@@ -15,6 +15,7 @@ class PlannerAPIMapper:
     def __init__(self):
         self.buckets_cache: Dict[str, str] = {}  # bucket_id -> bucket_name
         self.users_cache: Dict[str, Dict[str, str]] = {}  # user_id -> {displayName, mail}
+        self.category_descriptions: Dict[str, str] = {}  # category_id -> description
 
     def set_buckets(self, buckets: List[Dict[str, Any]]) -> None:
         """Buckets zwischenspeichern für späteres Mapping."""
@@ -28,6 +29,10 @@ class PlannerAPIMapper:
                 "displayName": user.get("displayName", ""),
                 "mail": user.get("mail") or user.get("userPrincipalName", "")
             }
+
+    def set_category_descriptions(self, category_descriptions: Dict[str, str]) -> None:
+        """Category-Descriptions (Tags) zwischenspeichern für späteres Mapping."""
+        self.category_descriptions = category_descriptions or {}
 
     def map_task_to_row(self, task: Dict[str, Any], task_details: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
@@ -87,6 +92,33 @@ class PlannerAPIMapper:
         
         row["Zugewiesen an"] = ", ".join(assigned_users) if assigned_users else ""
 
+        # ===== Tags (aus appliedCategories) =====
+        applied_categories = task.get("appliedCategories", {})
+        tags = []
+        for category_id in applied_categories.keys():
+            if category_id in self.category_descriptions:
+                tag_name = self.category_descriptions[category_id]
+                if tag_name:  # Nur nicht-leere Tags
+                    tags.append(tag_name)
+        
+        if tags:
+            row["Tags"] = ", ".join(tags)
+
+        # ===== "Verspätet"-Feld (automatisch berechnet) =====
+        is_overdue = False
+        due_date = task.get("dueDateTime")
+        if due_date and percent_complete < 100:
+            try:
+                from datetime import timezone
+                due_dt = datetime.fromisoformat(due_date.replace("Z", "+00:00"))
+                now = datetime.now(timezone.utc)
+                if due_dt < now:
+                    is_overdue = True
+            except:
+                pass  # Bei Fehler: nicht verspätet
+        
+        row["Verspätet"] = is_overdue
+
         # ===== Datumsfelder =====
         # Startdatum
         start_date = task.get("startDateTime")
@@ -135,18 +167,24 @@ class PlannerAPIMapper:
             if description:
                 row["Beschreibung"] = description
             
-            # Checklisten
+            # Checklisten - als strukturierte Liste für To-Do-Blöcke
             checklist = task_details.get("checklist", {})
             if checklist:
                 checklist_items = []
                 for item_id, item in checklist.items():
                     title = item.get("title", "")
                     is_checked = item.get("isChecked", False)
-                    status = "✅" if is_checked else "☐"
-                    checklist_items.append(f"{status} {title}")
+                    checklist_items.append({
+                        "title": title,
+                        "checked": is_checked
+                    })
                 
                 if checklist_items:
-                    row["Checkliste"] = "\n".join(checklist_items)
+                    # Sortiere nach orderHint falls vorhanden
+                    row["Checkliste_structured"] = checklist_items
+                    # Behalte auch Text-Version für Kompatibilität
+                    text_items = [f"{'✅' if item['checked'] else '☐'} {item['title']}" for item in checklist_items]
+                    row["Checkliste"] = "\n".join(text_items)
 
             # Referenzen/Anhänge
             references = task_details.get("references", {})

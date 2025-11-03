@@ -153,36 +153,54 @@ class NotionMapper:
                 }
             })
 
-        # Checklisten-Punkte
-        checklist_raw = row.get("Checkliste_raw")
-        checklist_done = row.get("Checkliste_done")
-
-        if checklist_raw or checklist_done:
-            # Erledigt/Gesamt-Zähler
-            if checklist_done:
-                done_pattern = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*$")
-                match = done_pattern.match(str(checklist_done))
-                if match:
-                    blocks.append({
-                        "object": "block",
-                        "type": "paragraph",
-                        "paragraph": {
-                            "rich_text": [{"type": "text", "text": {"content": f"Erledigt/Gesamt: {match.group(1)}/{match.group(2)}"}}]
-                        }
-                    })
-
-            # Offene Checklistenpunkte als To-Do-Blöcke
-            if checklist_raw:
-                checklist_items = [item.strip() for item in str(checklist_raw).split(";") if item.strip()]
-                for item in checklist_items:
+        # Checklisten - prüfe zuerst auf strukturierte Daten (aus API)
+        checklist_structured = row.get("Checkliste_structured")
+        
+        if checklist_structured:
+            # Strukturierte Checkliste (von API-Mapper) → echte To-Do-Blöcke
+            for item in checklist_structured:
+                title = item.get("title", "")
+                checked = item.get("checked", False)
+                if title:  # Nur nicht-leere Items
                     blocks.append({
                         "object": "block",
                         "type": "to_do",
                         "to_do": {
-                            "rich_text": [{"type": "text", "text": {"content": item}}],
-                            "checked": False
+                            "rich_text": [{"type": "text", "text": {"content": title}}],
+                            "checked": checked
                         }
                     })
+        else:
+            # Fallback: CSV-basierte Checklisten (alte Logik)
+            checklist_raw = row.get("Checkliste_raw")
+            checklist_done = row.get("Checkliste_done")
+
+            if checklist_raw or checklist_done:
+                # Erledigt/Gesamt-Zähler
+                if checklist_done:
+                    done_pattern = re.compile(r"^\s*(\d+)\s*/\s*(\d+)\s*$")
+                    match = done_pattern.match(str(checklist_done))
+                    if match:
+                        blocks.append({
+                            "object": "block",
+                            "type": "paragraph",
+                            "paragraph": {
+                                "rich_text": [{"type": "text", "text": {"content": f"Erledigt/Gesamt: {match.group(1)}/{match.group(2)}"}}]
+                            }
+                        })
+
+                # Offene Checklistenpunkte als To-Do-Blöcke
+                if checklist_raw:
+                    checklist_items = [item.strip() for item in str(checklist_raw).split(";") if item.strip()]
+                    for item in checklist_items:
+                        blocks.append({
+                            "object": "block",
+                            "type": "to_do",
+                            "to_do": {
+                                "rich_text": [{"type": "text", "text": {"content": item}}],
+                                "checked": False
+                            }
+                        })
 
         return blocks
 
