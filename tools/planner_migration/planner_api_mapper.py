@@ -88,7 +88,10 @@ class PlannerAPIMapper:
         for user_id in assignments.keys():
             if user_id in self.users_cache:
                 user_info = self.users_cache[user_id]
-                assigned_users.append(user_info["displayName"])
+                display_name = user_info.get("displayName")
+                # Nur nicht-None und nicht-leere Namen hinzufügen
+                if display_name:
+                    assigned_users.append(display_name)
         
         row["Zugewiesen an"] = ", ".join(assigned_users) if assigned_users else ""
 
@@ -208,13 +211,14 @@ class PlannerAPIMapper:
         return row
 
     def _parse_iso_date(self, iso_string: str) -> str:
-        """ISO-8601-Datum zu deutschem Format konvertieren."""
+        """ISO-8601-Datum zu Notion-kompatiblem Format (YYYY-MM-DD) konvertieren."""
         # Planner verwendet ISO-8601 Format: 2024-01-15T00:00:00Z
+        # Notion erwartet: YYYY-MM-DD
         try:
             dt = datetime.fromisoformat(iso_string.replace("Z", "+00:00"))
-            return dt.strftime("%d.%m.%Y")
+            return dt.strftime("%Y-%m-%d")
         except:
-            # Fallback: Original-String zurückgeben
+            # Fallback: Nur Datumsteil extrahieren (ohne Zeit)
             return iso_string.split("T")[0] if "T" in iso_string else iso_string
 
     def map_tasks_to_rows(
