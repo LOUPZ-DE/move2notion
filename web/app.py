@@ -168,13 +168,116 @@ def start_planner_migration():
     if "authenticated" not in session:
         return jsonify({"error": "Not authenticated"}), 401
     
-    # TODO: Implementierung der Migration in Background-Thread
-    data = request.json
-    return jsonify({
-        "status": "started",
-        "message": "Migration wird gestartet...",
-        "data": data
-    })
+    try:
+        from core.ms_graph_client import MSGraphClient
+        from core.notion_client import NotionClient
+        from tools.planner_migration.planner_api_mapper import create_planner_api_mapper
+        from tools.planner_migration.notion_mapper import create_notion_mapper
+        
+        # Request-Daten abrufen
+        data = request.json
+        plan_id = data.get("plan_id")
+        database_id = data.get("database_id")
+        
+        if not plan_id:
+            return jsonify({"error": "plan_id required"}), 400
+        if not database_id:
+            return jsonify({"error": "database_id required"}), 400
+        
+        # MS Graph Client erstellen
+        ms_client = MSGraphClient(web_auth_manager)
+        
+        # 1. Plan-Details abrufen
+        plan = ms_client.get_planner_plan(plan_id)
+        plan_title = plan.get("title", "Unbekannter Plan")
+        group_id = plan.get("owner")  # Group ID für Mitglieder-Abruf
+        
+        # 2. Buckets abrufen
+        buckets = ms_client.list_planner_buckets(plan_id)
+        
+        # 3. Tasks abrufen
+        tasks = ms_client.list_planner_tasks(plan_id)
+        
+        # 4. Task-Details abrufen (Beschreibung, Checklisten)
+        tasks_details = {}
+        for task in tasks:
+            task_id = task.get("id")
+            if task_id:
+                try:
+                    details = ms_client.get_task_details(task_id)
+                    tasks_details[task_id] = details
+                except Exception as e:
+                    # Task-Details optional - bei Fehler einfach überspringen
+                    pass
+        
+        # 5. Gruppenmitglieder abrufen (für Personen-Zuordnung)
+        group_members = []
+        if group_id:
+            try:
+                group_members = ms_client.get_group_members(group_id)
+            except Exception as e:
+                # Gruppenmitglieder optional
+                pass
+        
+        # 6. API-Mapper erstellen und Daten konvertieren
+        api_mapper = create_planner_api_mapper()
+        api_mapper.set_buckets(buckets)
+        api_mapper.set_users(group_members)
+        
+        # Tasks zu Row-Format konvertieren
+        rows = api_mapper.map_tasks_to_rows(tasks, tasks_details)
+        
+        if not rows:
+            return jsonify({
+                "status": "error",
+                "message": "Keine Tasks im Plan gefunden"
+            }), 400
+        
+        # 7. Notion-Client und Mapper erstellen
+        notion_client = NotionClient()
+        notion_mapper = create_notion_mapper(notion_client)
+        
+        # 8. Datenbank vorbereiten (Properties und Optionen)
+        notion_mapper.prepare_database_for_import(database_id, rows)
+        
+        # 9. Daten in Notion importieren
+        success_count = 0
+        error_count = 0
+        errors = []
+        
+        for row in rows:
+            try:
+                # Properties und Blöcke erstellen
+                properties = notion_mapper.build_properties_for_row(row, None)
+                children = notion_mapper.build_children_blocks(row)
+                
+                # Seite erstellen
+                notion_client.create_page(database_id, properties, children)
+                success_count += 1
+                
+            except Exception as e:
+                error_count += 1
+                errors.append({
+                    "task": row.get("Name", "Unbekannt"),
+                    "error": str(e)
+                })
+        
+        # 10. Ergebnis zurückgeben
+        return jsonify({
+            "status": "completed",
+            "message": f"Migration abgeschlossen: {success_count} erfolgreich, {error_count} Fehler",
+            "plan_title": plan_title,
+            "total_tasks": len(rows),
+            "success_count": success_count,
+            "error_count": error_count,
+            "errors": errors[:10] if errors else []  # Max. 10 Fehler anzeigen
+        })
+        
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "message": f"Migration fehlgeschlagen: {str(e)}"
+        }), 500
 
 
 # ===== Fehlerbehandlung =====

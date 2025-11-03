@@ -1,12 +1,16 @@
 # Planner → Notion Migration
 
-CSV-basierte Aufgabenmigration mit Personen-Mapping und Notion-Integration.
+Migration von Microsoft Planner Tasks in Notion - CSV-basiert (CLI) oder API-direkt (Web-GUI).
 
 ---
 
 ## Grundlagen
 
-Das Planner-Tool liest **CSV-Dateien** (z.B. aus Excel, Google Sheets) und erstellt/aktualisiert **Notion-Datenbanken** mit automatischer Spalten-Erkennung, Personen-Mapping und Multi-Select-Konvertierung.
+Das Planner-Tool unterstützt zwei Modi:
+- **CSV-basiert (CLI)**: Liest **CSV-Dateien** (z.B. aus Excel, Google Sheets) und erstellt/aktualisiert **Notion-Datenbanken**
+- **API-basiert (Web-GUI)**: Greift direkt auf Planner-Pläne per **Microsoft Graph API** zu - kein CSV-Export nötig!
+
+Beide Modi bieten automatische Spalten-Erkennung, Personen-Mapping und Multi-Select-Konvertierung.
 
 ---
 

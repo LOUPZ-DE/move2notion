@@ -163,6 +163,72 @@ class MSGraphClient:
 
         return users
 
+    # ===== Planner-API-Methoden =====
+
+    def get_planner_plan(self, plan_id: str) -> Dict[str, Any]:
+        """Planner-Plan Details abrufen."""
+        endpoint = f"/planner/plans/{plan_id}"
+        return self._make_request("GET", endpoint)
+
+    def list_planner_buckets(self, plan_id: str) -> List[Dict[str, Any]]:
+        """Alle Buckets eines Planner-Plans abrufen."""
+        buckets = []
+        endpoint = f"/planner/plans/{plan_id}/buckets"
+
+        while endpoint:
+            result = self._make_request("GET", endpoint)
+            buckets.extend(result.get("value", []))
+
+            # Nächste Seite laden falls vorhanden
+            next_link = result.get("@odata.nextLink")
+            if next_link:
+                endpoint = next_link.replace(self.BASE_URL, "")
+            else:
+                endpoint = None
+
+        return buckets
+
+    def list_planner_tasks(self, plan_id: str) -> List[Dict[str, Any]]:
+        """Alle Tasks eines Planner-Plans abrufen."""
+        tasks = []
+        endpoint = f"/planner/plans/{plan_id}/tasks"
+
+        while endpoint:
+            result = self._make_request("GET", endpoint)
+            tasks.extend(result.get("value", []))
+
+            # Nächste Seite laden falls vorhanden
+            next_link = result.get("@odata.nextLink")
+            if next_link:
+                endpoint = next_link.replace(self.BASE_URL, "")
+            else:
+                endpoint = None
+
+        return tasks
+
+    def get_task_details(self, task_id: str) -> Dict[str, Any]:
+        """Detaillierte Task-Informationen abrufen (inkl. Beschreibung, Checklisten)."""
+        endpoint = f"/planner/tasks/{task_id}/details"
+        return self._make_request("GET", endpoint)
+
+    def get_group_members(self, group_id: str) -> List[Dict[str, Any]]:
+        """Gruppenmitglieder abrufen (für Planner-Zuweisungen)."""
+        members = []
+        endpoint = f"/groups/{group_id}/members"
+
+        while endpoint:
+            result = self._make_request("GET", endpoint)
+            members.extend(result.get("value", []))
+
+            # Nächste Seite laden falls vorhanden
+            next_link = result.get("@odata.nextLink")
+            if next_link:
+                endpoint = next_link.replace(self.BASE_URL, "")
+            else:
+                endpoint = None
+
+        return members
+
 
 # Convenience-Funktionen
 def get_ms_graph_client() -> MSGraphClient:
