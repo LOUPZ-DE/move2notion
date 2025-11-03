@@ -52,20 +52,25 @@ class PeopleMapper:
             raise RuntimeError("Notion-Client nicht initialisiert")
 
         try:
-            # Notion-Benutzer abrufen (paginiert)
-            start_cursor = None
-            while True:
-                if start_cursor:
-                    response = self.notion.query_database(
-                        "", {}  # Leere Query für User-Liste
-                    )
-                else:
-                    # Direkte User-API würde hier verwendet werden
-                    # Da Notion-Client noch nicht die User-API hat, verwenden wir vorläufige Lösung
-                    break
-
-                # TODO: Implementieren wenn Notion-Client User-API hat
-                break
+            # Notion-Benutzer abrufen
+            users = self.notion.list_users()
+            
+            for user in users:
+                user_id = user.get("id")
+                user_type = user.get("type")
+                
+                # Nur echte Personen, keine Bots
+                if user_type != "person":
+                    continue
+                
+                # E-Mail aus person-Objekt extrahieren
+                person = user.get("person", {})
+                email = person.get("email")
+                
+                if email and user_id:
+                    self.email_to_user_id[email.lower()] = user_id
+            
+            print(f"[i] {len(self.email_to_user_id)} Notion-Benutzer gefunden")
 
         except Exception as e:
             print(f"[Warning] Notion-Benutzer konnten nicht abgerufen werden: {e}")
@@ -78,10 +83,11 @@ class PeopleMapper:
         # 2. Notion-Benutzer abrufen
         self.fetch_notion_users()
 
-        # 3. Name-zu-User-ID-Mapping erstellen
+        # 3. Name-zu-User-ID-Mapping erstellen (case-insensitive E-Mail-Matching)
         for name, email in self.name_to_email.items():
-            if email in self.email_to_user_id:
-                self.name_to_user_id[name] = self.email_to_user_id[email]
+            email_lower = email.lower()
+            if email_lower in self.email_to_user_id:
+                self.name_to_user_id[name] = self.email_to_user_id[email_lower]
 
     def get_user_id(self, name: str) -> Optional[str]:
         """User-ID für einen Namen abrufen."""

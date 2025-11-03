@@ -223,9 +223,12 @@ class MSGraphClient:
 
         while endpoint:
             result = self._make_request("GET", endpoint)
-            members.extend(result.get("value", []))
+            for member in result.get("value", []):
+                # Nur echte User, keine Service Principals, Geräte, etc.
+                member_type = member.get("@odata.type", "")
+                if member_type == "#microsoft.graph.user":
+                    members.append(member)
 
-            # Nächste Seite laden falls vorhanden
             next_link = result.get("@odata.nextLink")
             if next_link:
                 endpoint = next_link.replace(self.BASE_URL, "")
@@ -233,6 +236,11 @@ class MSGraphClient:
                 endpoint = None
 
         return members
+    
+    def get_user(self, user_id: str) -> Dict[str, Any]:
+        """Einzelnen Benutzer anhand der User-ID abrufen."""
+        endpoint = f"/users/{user_id}"
+        return self._make_request("GET", endpoint)
 
 
 # Convenience-Funktionen

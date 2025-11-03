@@ -85,6 +85,7 @@ class PlannerAPIMapper:
         # ===== Zuweisungen =====
         assignments = task.get("assignments", {})
         assigned_users = []
+        
         for user_id in assignments.keys():
             if user_id in self.users_cache:
                 user_info = self.users_cache[user_id]
@@ -93,7 +94,10 @@ class PlannerAPIMapper:
                 if display_name:
                     assigned_users.append(display_name)
         
-        row["Zugewiesen an"] = ", ".join(assigned_users) if assigned_users else ""
+        # Für Personen-Mapping: Text-Version mit "(Text)" Suffix
+        assigned_text = ", ".join(assigned_users) if assigned_users else ""
+        if assigned_text:
+            row["Zugewiesen an (Text)"] = assigned_text
 
         # ===== Tags (aus appliedCategories) =====
         applied_categories = task.get("appliedCategories", {})

@@ -172,6 +172,25 @@ class NotionClient:
                 continue
 
         return None
+    
+    def list_users(self) -> List[Dict[str, Any]]:
+        """Alle Benutzer im Workspace abrufen."""
+        all_users = []
+        has_more = True
+        start_cursor = None
+        
+        while has_more:
+            params = {"page_size": 100}
+            if start_cursor:
+                params["start_cursor"] = start_cursor
+            
+            response = self._make_request("GET", "/users", params=params)
+            all_users.extend(response.get("results", []))
+            
+            has_more = response.get("has_more", False)
+            start_cursor = response.get("next_cursor")
+        
+        return all_users
 
     def upload_file(self, filename: str, data: bytes, content_type: Optional[str] = None) -> Optional[str]:
         """
