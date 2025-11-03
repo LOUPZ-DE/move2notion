@@ -6,77 +6,75 @@ Migration von Microsoft Planner Tasks in Notion - CSV-basiert (CLI) oder API-dir
 
 ## Grundlagen
 
-Das Planner-Tool unterstützt zwei Modi:
-- **CSV-basiert (CLI)**: Liest **CSV-Dateien** (z.B. aus Excel, Google Sheets) und erstellt/aktualisiert **Notion-Datenbanken**
-- **API-basiert (Web-GUI)**: Greift direkt auf Planner-Pläne per **Microsoft Graph API** zu - kein CSV-Export nötig!
+Das Planner-Tool greift **direkt per API** auf Microsoft Planner zu - kein CSV-Export nötig!
 
-Beide Modi bieten automatische Spalten-Erkennung, Personen-Mapping und Multi-Select-Konvertierung.
+**Verfügbare Interfaces:**
+- **CLI** (Kommandozeile): Für automatisierte/Batch-Migration
+- **Web-GUI**: Interaktive Oberfläche mit OAuth-Login
+
+**Features:**
+- Automatische Spalten-Erkennung und Personen-Mapping
+- Checklisten als To-Do-Blöcke mit ✅/☐ Status
+- Tags aus Planner-Categories
+- Automatisches "Verspätet"-Feld
 
 ---
 
 ## Verwendung
 
-### Neue Datenbank erstellen
+### CLI (Kommandozeile)
 
 ```bash
+# Plan direkt aus Planner importieren
 python -m tools.planner_migration.cli \
-  --csv "Aufgaben.csv" \
-  --parent "NOTION_PAGE_ID" \
-  --db-title "Meine Aufgaben"
-```
-
-### In bestehende Datenbank importieren
-
-```bash
-python -m tools.planner_migration.cli \
-  --csv "Aufgaben.csv" \
+  --plan-id "PLAN_ID" \
   --database "NOTION_DATABASE_ID"
-```
 
-### Mit Personen-Mapping
-
-```bash
+# Mit Personen-Mapping
 python -m tools.planner_migration.cli \
-  --csv "Aufgaben.csv" \
-  --database "..." \
-  --people-csv "Notion_Personenmapping_Template.csv"
-```
+  --plan-id "PLAN_ID" \
+  --database "NOTION_DATABASE_ID" \
+  --people-map "Notion_Personenmapping_Template.csv"
 
-### Mit Upsert (Update/Insert)
-
-```bash
+# Mit detaillierten Ausgaben
 python -m tools.planner_migration.cli \
-  --csv "Aufgaben.csv" \
-  --database "..." \
-  --upsert \
-  --unique "Vorgangsnummer"
+  --plan-id "PLAN_ID" \
+  --database "NOTION_DATABASE_ID" \
+  --verbose
 ```
 
-### Argumente
+**Plan ID finden:**
+1. Öffnen Sie einen Planner-Plan in Microsoft Planner
+2. URL: `https://tasks.office.com/.../taskboard?groupId=xxx&planId=PLAN_ID`
+3. Kopieren Sie die `planId` aus der URL
+
+### Web-GUI
+
+1. Starten Sie die Web-GUI: `cd web && python app.py`
+2. Öffnen Sie `http://localhost:8080`
+3. Login mit Microsoft
+4. Navigate zu "Planner Migration"
+5. Plan ID + Database ID eingeben → "Migration starten"
+
+### Argumente (CLI)
 
 | Argument | Erforderlich | Beschreibung |
 |----------|-------------|-------------|
-| `--csv` | ✅ | CSV-Dateipath |
-| `--database` | - | Ziel-Notion-DB-ID (existing) |
-| `--parent` | - | Parent-Page-ID (für neue DB) |
-| `--db-title` | - | Titel neue DB (mit --parent) |
-| `--people-csv` | - | Personen-Mapping-CSV |
-| `--upsert` | - | Update mode (statt insert) |
-| `--unique` | - | Spalte für upsert |
-| `--dry-run` | - | Test ohne Änderungen |
+| `--plan-id` | ✅ | Planner Plan ID |
+| `--database` | ✅ | Ziel-Notion-DB-ID |
+| `--people-map` | - | Personen-Mapping-CSV |
 | `--verbose` | - | Detaillierte Ausgaben |
 
 ---
 
 ## Features
 
-### ✅ CSV-Verarbeitung
+### ✅ API-Integration
 
-- **Auto-Delimiter**: Erkennt `,`, `;`, `\t`
-- **Deutsche Datumsformate**: `TT.MM.JJJJ` → ISO
-- **Multi-Select**: `;`-getrennte Werte → Notion Select
-- **Boolean**: `ja/nein`, `true/false`, `x` → Checkbox
-- **Zahlen**: Auto-Erkennung und Konvertierung
+- **Direkter Zugriff**: Keine CSV-Exporte nötig
+- **Live-Daten**: Immer aktuelle Daten aus Planner
+- **Vollständige Daten**: Alle Felder inkl. Checklisten, Beschreibung, Tags
+- **Automatische Konvertierung**: Planner-Daten → Notion-Format
 
 ### ✅ Personen-Mapping
 
@@ -91,27 +89,32 @@ Name_in_CSV,Notion_Email
 Dann:
 ```bash
 python -m tools.planner_migration.cli \
-  --csv "..." \
+  --plan-id "..." \
   --database "..." \
-  --people-csv "Notion_Personenmapping_Template.csv"
+  --people-map "Notion_Personenmapping_Template.csv"
 ```
 
 ### ✅ Automatische Spalten-Erkennung
 
-- Erstellt Notion-Properties basierend auf CSV-Spalten
-- Erkennt Datentypen automatisch
-- Erweitert bestehende Datenbanken mit neuen Spalten
+- Erstellt Notion-Properties für Planner-Felder
+- Erweitert bestehende Datenbanken mit fehlenden Properties
+- Fügt Select-Optionen automatisch hinzu
 
-### ✅ Checklisten-Generierung
+### ✅ Checklisten als To-Do-Blöcke
 
-Spalten mit `;`-Werten werden automatisch als **nummerierte Listen** eingefügt.
+- Planner-Checklisten → Echte Notion To-Do-Blöcke
+- ✅/☐ Status korrekt übernommen
+- Interaktive Checkboxen in Notion
 
-### ✅ Upsert-Modus
+### ✅ Tags aus Planner-Categories
 
-Mit `--upsert --unique "Spaltenname"`:
-- Existierende Seiten werden aktualisiert
-- Neue Seiten werden erstellt
-- Ideal für regelmäßige Synchronisation
+- Planner-Labels → Notion Multi-Select Tags
+- Automatisches Mapping über Category-Descriptions
+
+### ✅ Verspätet-Feld (automatisch)
+
+- Berechnet aus Fälligkeitsdatum + Completion-Status
+- Notion-Checkbox wird automatisch gesetzt
 
 ---
 
@@ -119,21 +122,21 @@ Mit `--upsert --unique "Spaltenname"`:
 
 ```
 tools/planner_migration/
-├── cli.py              # CLI + Orchestrierung
-├── processor.py        # CSV-Verarbeitung
-├── people_mapper.py    # Personen-Mapping
-└── notion_mapper.py    # Notion-Property-Mapping
+├── cli.py                  # CLI + Orchestrierung
+├── planner_api_mapper.py   # API-zu-Notion-Konvertierung
+├── people_mapper.py        # Personen-Mapping
+└── notion_mapper.py        # Notion-Property-Mapping
 ```
 
 ### Ablauf
 
 ```
-CSV-Datei
-    ↓ [Lesen]
+Planner Plan ID
+    ↓ [MS Graph API]
+Tasks, Buckets, Details, Members
+    ↓ [planner_api_mapper.py]
 Rows mit Metadata
-    ↓ [Delimiter-Auto-Detect]
-Parsed Rows
-    ↓ [Spalten-Erkennung]
+    ↓ [Spalten-Konvertierung]
 Notion-Properties Schema
     ↓ [Personen-Mapping]
 Mapped Values
@@ -145,13 +148,19 @@ Notion-Database ✅
 
 ## Beispiele
 
-### Beispiel-CSV
+### CLI-Import
 
-```csv
-Titel,Beschreibung,Zuständig,Status,Fällig
-"Projekt A starten","Kickoff Meeting","Max Mustermann","In Progress","15.10.2025"
-"Dokumentation schreiben","API Docs","Anna Schmidt","Not Started","31.10.2025"
-"Code Review","PR #123","Max Mustermann;Anna Schmidt","In Review","12.10.2025"
+```bash
+# Einfacher Import
+python -m tools.planner_migration.cli \
+  --plan-id "abc123..." \
+  --database "def456..."
+
+# Mit Personen-Mapping
+python -m tools.planner_migration.cli \
+  --plan-id "abc123..." \
+  --database "def456..." \
+  --people-map "mapping.csv"
 ```
 
 ### Personen-Mapping-CSV
@@ -162,16 +171,12 @@ Name_in_CSV,Notion_Email
 "Anna Schmidt","anna.schmidt@firma.de"
 ```
 
-### Import mit Mapping
+### Web-GUI Import
 
-```bash
-python -m tools.planner_migration.cli \
-  --csv "tasks.csv" \
-  --parent "PAGE_ID" \
-  --db-title "Aufgaben" \
-  --people-csv "Notion_Personenmapping_Template.csv" \
-  --verbose
-```
+1. Browser: `http://localhost:8080`
+2. Login mit Microsoft
+3. Planner Migration → Plan ID + Database ID eingeben
+4. "Migration starten"
 
 ---
 
@@ -180,83 +185,97 @@ python -m tools.planner_migration.cli \
 ### `.env`
 
 ```bash
+# Microsoft Graph API
+MS_CLIENT_ID=your-client-id
+MS_TENANT_ID=common
+MS_GRAPH_SCOPES=Notes.Read.All,Sites.Read.All,Tasks.Read,Group.Read.All
+
+# Web-GUI (optional)
+MS_CLIENT_SECRET=your-client-secret
+FLASK_SECRET_KEY=your-secret-key
+FLASK_REDIRECT_URI=http://localhost:8080/callback
+
 # Notion
 NOTION_TOKEN=secret_xxx
 NOTION_DATABASE_ID=xxx
-
-# Optional
-NOTION_RATE_LIMIT=3.0
 ```
+
+### Azure AD Permissions
+
+Erforderliche Scopes:
+- `Tasks.Read` - Planner-Tasks lesen
+- `Group.Read.All` - Gruppenmitglieder abrufen
+- `Notes.Read.All` - Optional (für OneNote)
+- `Sites.Read.All` - Optional (für SharePoint)
 
 ---
 
 ## Häufige Aufgaben
 
-### Nur bestimmte Spalten importieren
+### Plan ID herausfinden
 
-Einfach die unwanted Spalten aus der CSV entfernen.
+1. Öffne Planner-Plan in Microsoft Planner
+2. Kopiere `planId` aus URL:
+   ```
+   https://tasks.office.com/.../taskboard?groupId=xxx&planId=PLAN_ID
+   ```
 
-### Deutsche Datumsformate
+### Personen-Mapping erstellen
 
-Das Tool erkennt automatisch:
-- `15.10.2025` → `2025-10-15`
-- `15/10/2025` → `2025-10-15`
-
-### Multi-Select separieren
-
-Spalten-Werte mit `;` werden automatisch zu Notion Multi-Select:
+Erstelle `mapping.csv`:
 ```csv
-"Tags"
-"Python;API;Testing"
+Name_in_CSV,Notion_Email
+"Max Mustermann","max@firma.de"
 ```
 
-### Upsert für Updates
-
+Dann:
 ```bash
 python -m tools.planner_migration.cli \
-  --csv "tasks_updated.csv" \
-  --database "EXISTING_DB_ID" \
-  --upsert \
-  --unique "Titel"
+  --plan-id "..." \
+  --database "..." \
+  --people-map "mapping.csv"
 ```
+
+### Tags werden nicht übernommen
+
+Prüfen Sie, ob Planner-Plan **Labels** verwendet:
+- Planner → Plan öffnen → "Kategorien"
+- Falls keine Labels: Tags-Feld bleibt leer
 
 ---
 
 ## Troubleshooting
 
-### CSV wird nicht erkannt
-- Stellen Sie sicher, dass der Delimiter korrekt ist
-- Tool versucht automatisch: `,`, `;`, `\t`
+### "Unauthorized" Fehler
+- Prüfen Sie Azure AD Permissions (Tasks.Read, Group.Read.All)
+- Token eventuell abgelaufen → neu authentifizieren
 
 ### Personen-Mapping funktioniert nicht
 - Prüfen Sie, dass `Notion_Email` gültig ist
 - E-Mail muss im Notion Workspace registriert sein
 
-### Spalten werden nicht erstellt
-- Neue Spalten werden nur mit `--database` (existing DB) erstellt
-- Mit `--parent` (neue DB) werden alle Spalten aus CSV erstellt
+### Checklisten werden nicht übernommen
+- Task-Details werden separat abgerufen
+- Bei Fehler: Checklist-Feld bleibt leer
+- Prüfen Sie mit `--verbose` für Details
 
-### Dry-Run zeigt falsche Daten
-```bash
-python -m tools.planner_migration.cli \
-  --csv "..." \
-  --database "..." \
-  --dry-run \
-  --verbose
-```
+### Tags werden nicht angezeigt
+- Planner-Plan muss Categories/Labels verwenden
+- Ohne Categories: Tags-Feld bleibt leer
 
 ---
 
 ## Performance
 
-- **CSV-Größe**: Bis 10.000 Zeilen getestet
-- **Rate-Limiting**: 3 Requests/Sekunde (automatisch)
-- **Batch-Size**: 50 Pages pro Notion-Batch
+- **Plan-Größe**: Bis 500 Tasks getestet
+- **API-Calls**: ~3 pro Task (Task + Details + Batch)
+- **Notion-Rate-Limiting**: Automatisch (3 req/s)
 
 ---
 
 ## Bekannte Limitationen
 
-- Nested CSV-Strukturen werden flachgedrückt
-- Binary Data (Bilder) nicht direkt unterstützt
+- Planner-Anhänge (Dateien) werden nur als Links übernommen
+- Wiederkehrende Tasks nicht unterstützt (Planner-API hat keine Recurrence)
 - Formeln/Rollups müssen manuell in Notion erstellt werden
+- Token-Gültigkeit: 60-75 Minuten (Auto-Refresh via MSAL)

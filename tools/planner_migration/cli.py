@@ -4,10 +4,9 @@
 CLI-Interface für Planner-zu-Notion Migration.
 
 Dieses Modul orchestriert die verschiedenen Komponenten der Planner-Migration:
-- CSV-Verarbeitung
+- Planner-API-Zugriff
 - Personen-Mapping
 - Notion-Datenbank-Operationen
-- State Management
 """
 import argparse
 import sys
@@ -30,45 +29,32 @@ class PlannerMigrationCLI:
     def parse_arguments(self) -> argparse.Namespace:
         """Kommandozeilenargumente parsen."""
         parser = argparse.ArgumentParser(
-            description="Microsoft Planner CSV zu Notion migrieren",
+            description="Microsoft Planner zu Notion migrieren (via API)",
             formatter_class=argparse.RawDescriptionHelpFormatter,
             epilog="""
 Beispiele:
-  # Neue Datenbank erstellen
-  python -m tools.planner_migration.cli --csv Aufgaben.csv --parent PAGE_ID --db-title "Projekt Aufgaben"
+  # Plan direkt aus Planner importieren
+  python -m tools.planner_migration.cli --plan-id PLAN_ID --database DB_ID
 
-  # In bestehende Datenbank importieren
-  python -m tools.planner_migration.cli --csv Aufgaben.csv --database DB_ID
+  # Mit Personen-Mapping
+  python -m tools.planner_migration.cli --plan-id PLAN_ID --database DB_ID --people-map mapping.csv
 
-  # Mit Upsert und Personen-Mapping
-  python -m tools.planner_migration.cli --csv Aufgaben.csv --database DB_ID --upsert --people-map mapping.csv
+  # Mit detaillierten Ausgaben
+  python -m tools.planner_migration.cli --plan-id PLAN_ID --database DB_ID --verbose
+
+Plan ID finden:
+  Öffnen Sie einen Planner-Plan in Microsoft Planner
+  URL: https://tasks.office.com/.../taskboard?groupId=xxx&planId=PLAN_ID
+  Kopieren Sie die planId aus der URL
             """
         )
 
         # Input-Optionen
-        parser.add_argument("--csv", required=True, help="Pfad zur Planner-CSV-Datei")
-
-        # Notion-Ziel-Optionen (mutually exclusive)
-        target_group = parser.add_mutually_exclusive_group(required=True)
-        target_group.add_argument("--parent", help="Notion Page ID (erstellt neue Datenbank)")
-        target_group.add_argument("--database", help="Bestehende Notion Datenbank ID")
-
-        parser.add_argument("--db-title", help="Titel für neue Datenbank (mit --parent)")
+        parser.add_argument("--plan-id", required=True, help="Planner Plan ID")
+        parser.add_argument("--database", required=True, help="Notion Datenbank ID")
 
         # Erweiterte Optionen
         parser.add_argument("--people-map", help="CSV für Personen-Mapping (Name → Notion Email)")
-        parser.add_argument("--unique", default="Vorgangsnummer (Planner)",
-                          help="Property für Upsert-Identifikation (Standard: Vorgangsnummer)")
-        parser.add_argument("--rate", type=float, default=3.0,
-                          help="Rate Limit (Requests/Sekunde, Standard: 3.0)")
-        parser.add_argument("--dry-run", action="store_true",
-                          help="Trockenlauf ohne Notion-Änderungen")
-
-        # Modus-Optionen
-        parser.add_argument("--upsert", action="store_true",
-                          help="Update bestehender Seiten statt neue erstellen")
-
-        # Debug-Optionen
         parser.add_argument("--verbose", "-v", action="store_true",
                           help="Detaillierte Ausgaben")
 
@@ -76,16 +62,14 @@ Beispiele:
 
     def validate_arguments(self, args: argparse.Namespace) -> None:
         """Argumente validieren."""
-        # CSV-Datei prüfen
-        try:
-            validate_file_exists(args.csv)
-        except FileNotFoundError as e:
-            print(f"[❌] CSV-Datei nicht gefunden: {e}")
+        # Plan ID prüfen
+        if not args.plan_id:
+            print("[❌] --plan-id ist erforderlich")
             sys.exit(1)
-
-        # Bei neuer Datenbank: db-title erforderlich
-        if args.parent and not args.db_title:
-            print("[❌] --db-title ist erforderlich bei Verwendung von --parent")
+        
+        # Database ID prüfen
+        if not args.database:
+            print("[❌] --database ist erforderlich")
             sys.exit(1)
 
         # Personen-Mapping-Datei prüfen falls angegeben
@@ -122,12 +106,8 @@ Beispiele:
         self.validate_arguments(self.args)
 
         if self.args.verbose:
-            print(f"[i] CSV-Datei: {self.args.csv}")
-            if self.args.database:
-                print(f"[i] Ziel-Datenbank: {self.args.database}")
-            else:
-                print(f"[i] Parent-Page: {self.args.parent}")
-                print(f"[i] Datenbank-Titel: {self.args.db_title}")
+            print(f"[i] Plan ID: {self.args.plan_id}")
+            print(f"[i] Ziel-Datenbank: {self.args.database}")
 
         # Services initialisieren
         self.initialize_services()
@@ -137,30 +117,77 @@ Beispiele:
 
     def run_migration(self) -> None:
         """Vollständige Migration durchführen."""
-        from .processor import create_planner_processor
+        from core.ms_graph_client import MSGraphClient
+        from .planner_api_mapper import create_planner_api_mapper
         from .people_mapper import create_people_mapper
         from .notion_mapper import create_notion_mapper
-        from core.utils import setup_rate_limiting
 
         print("[🚀] Starte Migration...")
 
-        # 1. CSV-Prozessor initialisieren und Daten laden
-        print("[i] Verarbeite CSV-Datei...")
-        processor = create_planner_processor(self.args.csv)
-        processor.load_csv()
-        processed_data = processor.process_all_rows()
-
-        if not processed_data:
-            print("[❌] Keine gültigen Daten in CSV gefunden")
+        # 1. MS Graph Client erstellen
+        print("[i] Verbinde mit Microsoft Graph API...")
+        ms_client = MSGraphClient()
+        
+        # 2. Plan-Details abrufen
+        print(f"[i] Rufe Plan-Details ab...")
+        plan = ms_client.get_planner_plan(self.args.plan_id)
+        plan_title = plan.get("title", "Unbekannter Plan")
+        group_id = plan.get("owner")
+        print(f"[✅] Plan gefunden: {plan_title}")
+        
+        # 3. Buckets abrufen
+        print("[i] Rufe Buckets ab...")
+        buckets = ms_client.list_planner_buckets(self.args.plan_id)
+        print(f"[✅] {len(buckets)} Buckets gefunden")
+        
+        # 4. Tasks abrufen
+        print("[i] Rufe Tasks ab...")
+        tasks = ms_client.list_planner_tasks(self.args.plan_id)
+        print(f"[✅] {len(tasks)} Tasks gefunden")
+        
+        # 5. Task-Details abrufen
+        print("[i] Rufe Task-Details ab...")
+        tasks_details = {}
+        for i, task in enumerate(tasks):
+            task_id = task.get("id")
+            if task_id:
+                try:
+                    details = ms_client.get_task_details(task_id)
+                    tasks_details[task_id] = details
+                    if self.args.verbose:
+                        print(f"  [{i+1}/{len(tasks)}] Details für '{task.get('title', 'Unbenannt')}'")
+                except Exception as e:
+                    if self.args.verbose:
+                        print(f"  [⚠️] Details für Task {task_id} nicht abrufbar: {e}")
+        
+        print(f"[✅] Details für {len(tasks_details)} Tasks abgerufen")
+        
+        # 6. Gruppenmitglieder abrufen
+        group_members = []
+        if group_id:
+            try:
+                print("[i] Rufe Gruppenmitglieder ab...")
+                group_members = ms_client.get_group_members(group_id)
+                print(f"[✅] {len(group_members)} Mitglieder gefunden")
+            except Exception as e:
+                print(f"[⚠️] Gruppenmitglieder konnten nicht abgerufen werden: {e}")
+        
+        # 7. API-Mapper erstellen und Daten konvertieren
+        print("[i] Konvertiere Daten...")
+        api_mapper = create_planner_api_mapper()
+        api_mapper.set_buckets(buckets)
+        api_mapper.set_users(group_members)
+        category_descriptions = plan.get("categoryDescriptions", {})
+        api_mapper.set_category_descriptions(category_descriptions)
+        
+        rows = api_mapper.map_tasks_to_rows(tasks, tasks_details)
+        print(f"[✅] {len(rows)} Tasks konvertiert")
+        
+        if not rows:
+            print("[❌] Keine Tasks gefunden")
             return
-
-        print(f"[✅] {len(processed_data)} Zeilen verarbeitet")
-
-        # Bereinigte CSV speichern
-        clean_csv_path = processor.save_clean_csv()
-        print(f"[i] Bereinigte CSV gespeichert: {clean_csv_path}")
-
-        # 2. Personen-Mapper initialisieren (falls Mapping-CSV vorhanden)
+        
+        # 8. Personen-Mapper initialisieren (falls Mapping-CSV vorhanden)
         people_mapper = None
         if self.args.people_map:
             print("[i] Lade Personen-Mapping...")
@@ -172,90 +199,38 @@ Beispiele:
             if unmapped:
                 print(f"[⚠️] {len(unmapped)} Personen konnten nicht gemappt werden")
 
-        # 3. Notion-Mapper initialisieren
+        # 9. Notion-Mapper initialisieren
         notion_mapper = create_notion_mapper(self.notion)
 
-        # 4. Datenbank vorbereiten oder verwenden
-        database_id = self._prepare_database(notion_mapper, processed_data)
+        # 10. Datenbank vorbereiten
+        database_id = self.args.database
+        print(f"[i] Bereite Datenbank vor...")
+        notion_mapper.prepare_database_for_import(database_id, rows)
 
-        # 5. Daten importieren
-        self._import_data(notion_mapper, database_id, processed_data, people_mapper)
+        # 11. Daten importieren
+        self._import_data(notion_mapper, database_id, rows, people_mapper)
 
-    def _prepare_database(self, notion_mapper, processed_data) -> str:
-        """Datenbank erstellen oder verwenden."""
-        if self.args.database:
-            # Bestehende Datenbank verwenden
-            database_id = self.args.database
-            print(f"[i] Verwende bestehende Datenbank: {database_id}")
 
-            # Schema und Optionen vorbereiten
-            notion_mapper.prepare_database_for_import(database_id, processed_data)
-
-        else:
-            # Neue Datenbank erstellen
-            print(f"[i] Erstelle neue Datenbank: {self.args.db_title}")
-            parent_page_id = self.args.parent
-
-            db = self.notion.create_database(
-                parent_page_id=parent_page_id,
-                title=self.args.db_title,
-                properties=notion_mapper.BASE_PROPERTIES
-            )
-            database_id = db["id"]
-            print(f"[✅] Datenbank erstellt: {database_id}")
-
-            # Optionen hinzufügen
-            notion_mapper.prepare_database_for_import(database_id, processed_data)
-
-        return database_id
-
-    def _import_data(self, notion_mapper, database_id: str, processed_data: List[Dict],
+    def _import_data(self, notion_mapper, database_id: str, rows: List[Dict],
                     people_mapper) -> None:
         """Daten in Notion importieren."""
-        from core.utils import setup_rate_limiting
-
-        print(f"[i] Importiere {len(processed_data)} Einträge...")
-
-        # Rate Limiting konfigurieren
-        delay = setup_rate_limiting(self.args.rate)
+        print(f"[i] Importiere {len(rows)} Einträge...")
 
         success_count = 0
         error_count = 0
 
-        for i, row in enumerate(processed_data):
+        for i, row in enumerate(rows):
             try:
                 # Properties und Blöcke erstellen
                 properties = notion_mapper.build_properties_for_row(row, people_mapper)
                 children = notion_mapper.build_children_blocks(row)
 
-                # Upsert-Logik
-                page_id = None
-                if self.args.upsert:
-                    unique_value = row.get(self.args.unique)
-                    if unique_value:
-                        page_id = notion_mapper.find_existing_page(
-                            database_id, self.args.unique, str(unique_value)
-                        )
-
-                # Seite erstellen oder aktualisieren
-                if page_id:
-                    # Bestehende Seite aktualisieren
-                    self.notion.update_page(page_id, properties)
-                    if children:
-                        self.notion.append_blocks(page_id, children)
-                    action = "aktualisiert"
-                else:
-                    # Neue Seite erstellen
-                    self.notion.create_page(database_id, properties, children)
-                    action = "erstellt"
-
+                # Seite erstellen
+                self.notion.create_page(database_id, properties, children)
+                
                 success_count += 1
-                print(f"[{i+1}/{len(processed_data)}] {action}: {row.get('Name', 'Unbenannt')}")
-
-                # Rate Limiting
-                if delay > 0:
-                    import time
-                    time.sleep(delay)
+                task_name = row.get('Name', 'Unbenannt')
+                print(f"[{i+1}/{len(rows)}] Erstellt: {task_name}")
 
             except Exception as e:
                 error_count += 1
