@@ -91,17 +91,18 @@ https://tasks.office.com/.../taskboard?groupId=xxx&planId=abc123def456
 
 **Wichtig:** Personen-Mapping ist **optional**!
 
-#### Ohne CSV (Standard)
-- Benutzer-Namen werden als **Text** eingetragen
-- Feld: **"Zugewiesen an (Text)"**
-- ✅ Migration funktioniert vollständig
-- ❌ Keine @-Mentions oder Notifications in Notion
-
-#### Mit CSV (empfohlen für @-Mentions)
-- Benutzer werden als **Notion-Personen** eingetragen
+#### Ohne CSV (Standard - Automatisches E-Mail-Mapping)
+- MS Graph liefert E-Mails, die automatisch zu Notion-Benutzern gemappt werden
 - Feld: **"Zugewiesen an"** (People Property)
-- ✅ @-Mentions funktionieren
+- ✅ @-Mentions funktionieren automatisch
 - ✅ Notifications in Notion
+- ✅ Keine manuelle CSV-Pflege nötig
+- ℹ️ Funktioniert nur für Benutzer, die im Notion Workspace mit derselben E-Mail registriert sind
+
+#### Mit CSV (nur für Edge Cases)
+- Manuelles Mapping für Sonderfälle (z.B. verschiedene E-Mail-Adressen)
+- Überschreibt automatisches E-Mail-Mapping
+- Nützlich wenn Planner- und Notion-E-Mails unterschiedlich sind
 
 Erstellen Sie `Notion_Personenmapping_Template.csv`:
 
@@ -213,7 +214,7 @@ Name_in_CSV,Notion_Email
 # Microsoft Graph API
 MS_CLIENT_ID=your-client-id
 MS_TENANT_ID=common
-MS_GRAPH_SCOPES=Notes.Read.All,Sites.Read.All,Tasks.Read,Group.Read.All
+MS_GRAPH_SCOPES=Notes.Read.All,Sites.Read.All,Tasks.Read,Group.Read.All,User.Read.All
 
 # Web-GUI (optional)
 MS_CLIENT_SECRET=your-client-secret
@@ -230,8 +231,11 @@ NOTION_DATABASE_ID=xxx
 Erforderliche Scopes:
 - `Tasks.Read` - Planner-Tasks lesen
 - `Group.Read.All` - Gruppenmitglieder abrufen
+- `User.Read.All` - Benutzer-E-Mails für Auto-Mapping (Delegated Permission erforderlich!)
 - `Notes.Read.All` - Optional (für OneNote)
 - `Sites.Read.All` - Optional (für SharePoint)
+
+**Wichtig:** `User.Read.All` muss als **Delegated Permission** konfiguriert sein, nicht als Application Permission! Planner API funktioniert nur mit User Context (Device Code Flow).
 
 ---
 
