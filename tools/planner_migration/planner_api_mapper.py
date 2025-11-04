@@ -84,20 +84,19 @@ class PlannerAPIMapper:
 
         # ===== Zuweisungen =====
         assignments = task.get("assignments", {})
-        assigned_users = []
+        assigned_emails = []
         
         for user_id in assignments.keys():
             if user_id in self.users_cache:
                 user_info = self.users_cache[user_id]
-                display_name = user_info.get("displayName")
-                # Nur nicht-None und nicht-leere Namen hinzufügen
-                if display_name:
-                    assigned_users.append(display_name)
+                email = user_info.get("mail")
+                # Nur gültige E-Mails hinzufügen
+                if email:
+                    assigned_emails.append(email)
         
-        # Für Personen-Mapping: Text-Version mit "(Text)" Suffix
-        assigned_text = ", ".join(assigned_users) if assigned_users else ""
-        if assigned_text:
-            row["Zugewiesen an (Text)"] = assigned_text
+        # Für direktes Notion People-Mapping via E-Mail
+        if assigned_emails:
+            row["Zugewiesen an (Emails)"] = assigned_emails
 
         # ===== Tags (aus appliedCategories) =====
         applied_categories = task.get("appliedCategories", {})

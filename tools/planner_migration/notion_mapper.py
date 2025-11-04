@@ -26,8 +26,6 @@ class NotionMapper:
         "Priorität": {"select": {}},
         "Tags": {"multi_select": {}},
         "Zugewiesen an": {"people": {}},
-        "Erstellt von": {"people": {}},
-        "Abgeschlossen von": {"people": {}},
         "Beschreibung": {"rich_text": {}},
         "Erstellungsdatum": {"date": {}},
         "Startdatum": {"date": {}},
@@ -40,6 +38,7 @@ class NotionMapper:
 
     def __init__(self, notion_client: NotionClient):
         self.notion = notion_client
+        self._notion_users_cache = None  # Cache für Notion-Benutzer (E-Mail → ID)
 
     def ensure_database_schema(self, database_id: str) -> None:
         """Stellt sicher, dass Datenbank alle erforderlichen Properties hat."""
@@ -123,18 +122,21 @@ class NotionMapper:
             if value:
                 properties[prop_name] = {"rich_text": [{"type": "text", "text": {"content": str(value)}}]}
 
-        # People-Properties (über Mapper)
-        if people_mapper:
-            for text_prop, people_prop in [
-                ("Zugewiesen an (Text)", "Zugewiesen an"),
-                ("Erstellt von (Text)", "Erstellt von"),
-                ("Abgeschlossen von (Text)", "Abgeschlossen von")
-            ]:
-                text_value = row.get(text_prop)
+        # People-Properties - E-Mail-basiert (CSV-Mapper optional für Kompatibilität)
+        emails = row.get("Zugewiesen an (Emails)", [])
+        if emails:
+            if people_mapper:
+                # Mit CSV-Mapper: Mapping über Namen (Legacy-Support)
+                text_value = row.get("Zugewiesen an (Text)")
                 if text_value:
                     user_ids = people_mapper.get_user_ids_for_names(text_value)
                     if user_ids:
-                        properties[people_prop] = {"people": [{"id": uid} for uid in user_ids]}
+                        properties["Zugewiesen an"] = {"people": [{"id": uid} for uid in user_ids]}
+            else:
+                # Ohne CSV: E-Mail → Notion User-ID Mapping
+                notion_user_ids = self._get_notion_user_ids_for_emails(emails)
+                if notion_user_ids:
+                    properties["Zugewiesen an"] = {"people": [{"id": uid} for uid in notion_user_ids]}
 
         return properties
 
@@ -203,6 +205,33 @@ class NotionMapper:
                         })
 
         return blocks
+
+    def _get_notion_user_ids_for_emails(self, emails: List[str]) -> List[str]:
+        """E-Mails zu Notion User-IDs mappen."""
+        if not emails:
+            return []
+        
+        # Cache initialisieren falls nötig
+        if self._notion_users_cache is None:
+            self._notion_users_cache = {}
+            try:
+                users = self.notion.list_users()
+                for user in users:
+                    user_email = user.get("person", {}).get("email") if user.get("type") == "person" else None
+                    if user_email:
+                        self._notion_users_cache[user_email.lower()] = user["id"]
+            except Exception as e:
+                print(f"[⚠️] Notion-Benutzer konnten nicht abgerufen werden: {e}")
+                return []
+        
+        # E-Mails zu IDs mappen
+        user_ids = []
+        for email in emails:
+            email_lower = email.lower()
+            if email_lower in self._notion_users_cache:
+                user_ids.append(self._notion_users_cache[email_lower])
+        
+        return user_ids
 
     def find_existing_page(self, database_id: str, unique_property: str, unique_value: str) -> Optional[str]:
         """Bestehende Seite anhand einer eindeutigen Property finden."""
