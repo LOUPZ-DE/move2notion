@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="🧠 Automatisierte Migration von Microsoft 365 (Planner, OneNote) zu Notion. Unterstützt Rich-Content, Bilder, Tasks via CLI und Web-GUI.">
+    <title>move2notion - Microsoft zu Notion Migration Suite</title>
+    <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Hero Section -->
+        <header class="hero">
+            <h1>🧠 move2notion</h1>
+            <p class="tagline">Automatisierte Migration von Microsoft 365 zu Notion</p>
+            <p class="description">
+                Migriere deine Daten aus Microsoft Planner und OneNote in strukturierte Notion-Datenbanken.<br>
+                Mit Rich-Content-Support, Bildern, Tasks und automatischer Synchronisation.
+            </p>
+            <div class="cta-buttons">
+                <a href="https://github.com/LOUPZ-DE/move2notion" class="btn btn-primary" target="_blank">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    </svg>
+                    GitHub Repository
+                </a>
+                <a href="https://github.com/LOUPZ-DE/move2notion#-installation" class="btn btn-secondary" target="_blank">
+                    📦 Quick Start
+                </a>
+            </div>
+        </header>
+
+        <!-- Features Section -->
+        <section class="features">
+            <h2>🚀 Features</h2>
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">📋</div>
+                    <h3>Planner Migration</h3>
+                    <p>Migriere Microsoft Planner Tasks mit allen Metadaten, Personen-Zuweisungen und Status-Tracking.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">📓</div>
+                    <h3>OneNote Migration</h3>
+                    <p>Rich-Content-Support für Überschriften, Listen, Tabellen, Bilder, Code-Blöcke und Formatierungen.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🌐</div>
+                    <h3>Web-GUI</h3>
+                    <p>Benutzerfreundliche Weboberfläche mit OAuth-Authentifizierung und Live-Fortschrittsanzeige.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>CLI-Tools</h3>
+                    <p>Mächtige Kommandozeilen-Tools für Batch-Verarbeitung und Automatisierung.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔄</div>
+                    <h3>Idempotent & Resumable</h3>
+                    <p>Sichere Resume-Funktionalität mit Checksummen. Fehler beheben und einfach neu starten.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎨</div>
+                    <h3>Rich-Content</h3>
+                    <p>Bilder, Tabellen, To-Dos, Formatierungen und Attachments werden korrekt importiert.</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Quick Links -->
+        <section class="links">
+            <h2>📚 Dokumentation</h2>
+            <div class="link-grid">
+                <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/README.md" class="link-card" target="_blank">
+                    <h3>📖 README</h3>
+                    <p>Vollständige Dokumentation und Übersicht</p>
+                </a>
+                <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/docs/PLANNER.md" class="link-card" target="_blank">
+                    <h3>📋 Planner Migration</h3>
+                    <p>Detaillierte Anleitung für Planner-Import</p>
+                </a>
+                <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/docs/ONENOTE.md" class="link-card" target="_blank">
+                    <h3>📓 OneNote Migration</h3>
+                    <p>Detaillierte Anleitung für OneNote-Import</p>
+                </a>
+                <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/web/README.md" class="link-card" target="_blank">
+                    <h3>🌐 Web-GUI</h3>
+                    <p>Anleitung zur Web-Oberfläche</p>
+                </a>
+            </div>
+        </section>
+
+        <!-- Installation -->
+        <section class="installation">
+            <h2>📦 Installation</h2>
+            <div class="code-block">
+                <pre><code># Repository klonen
+git clone https://github.com/LOUPZ-DE/move2notion.git
+cd move2notion
+
+# Umgebung einrichten
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Dependencies installieren
+pip install -r requirements.txt
+
+# Konfiguration
+cp .env.example .env
+# .env mit deinen Zugangsdaten füllen</code></pre>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer>
+            <p>
+                Made with ❤️ by LOUPZ<br>
+                <a href="https://github.com/LOUPZ-DE/move2notion" target="_blank">GitHub</a> • 
+                <a href="https://github.com/LOUPZ-DE/move2notion/issues" target="_blank">Issues</a> • 
+                <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/LICENSE" target="_blank">MIT License</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>
