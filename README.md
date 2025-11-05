@@ -96,7 +96,7 @@ python -m tools.planner_migration.cli \
 - Multi-Select Konvertierung
 - Upsert-Modus
 
-📖 [Details](docs/PLANNER.md)
+📖 [Details](documentation/PLANNER.md)
 
 ### 2. **OneNote → Notion** (CLI)
 
@@ -119,7 +119,7 @@ python -m tools.onenote_migration.cli \
 - **Smart Updates**: Alte Seite archivieren statt Blöcke einzeln löschen (95% schneller)
 - **Zeitfilter**: `--since 2025-01-01` für inkrementelle Imports
 
-📖 [Details](docs/ONENOTE.md)
+📖 [Details](documentation/ONENOTE.md)
 
 ---
 
@@ -161,7 +161,7 @@ ms_notion_migration/
 │   ├── README.md          # Web-GUI Dokumentation
 │   └── QUICKSTART.md      # 5-Minuten-Setup
 │
-└── docs/                   # Dokumentation
+└── documentation/          # Dokumentation
     ├── PLANNER.md
     ├── ONENOTE.md
     └── WEB_GUI.md
@@ -211,4 +211,4 @@ A: Ja! Mit `--resume` (oder ohne, um zu überschreiben).
 
 ---
 
-*Für Details: siehe [docs/](docs/) oder Issue öffnen.*
+*Für Details: siehe [documentation/](documentation/) oder Issue öffnen.*
