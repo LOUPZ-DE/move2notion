@@ -67,6 +67,10 @@ https://tasks.office.com/.../taskboard?groupId=xxx&planId=abc123def456
 4. Navigate zu "Planner Migration"
 5. Plan ID + Database ID eingeben → "Migration starten"
 
+![Planner Migration Web-Interface](Move2Notion_screen_planner.png)
+
+*Web-Oberfläche für die Planner-Migration mit interaktiven Formularen*
+
 ### Argumente (CLI)
 
 | Argument | Erforderlich | Beschreibung |

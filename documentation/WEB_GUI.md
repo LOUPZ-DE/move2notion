@@ -147,11 +147,15 @@ Die gleichen `core/ms_graph_client.py` und `core/notion_client.py` Module werden
 - Informationen zu verfügbaren Migrations-Tools
 - Weiterleitung zu Microsoft Login
 
+![Login-Oberfläche](Move2Notion_screen_login.png)
+
 ### Dashboard
 
 - Übersicht über verfügbare Migrations-Tools
 - Status-Anzeige (Authentifizierung, API-Verbindungen)
 - Navigation zu OneNote und Planner Migration
+
+![Dashboard-Übersicht](Move2Notion_screen_dashboard.png)
 
 ### OneNote-Migration
 
@@ -169,6 +173,8 @@ Die gleichen `core/ms_graph_client.py` und `core/notion_client.py` Module werden
 3. (Optional) **Personen-Mapping CSV** hochladen
 4. **Migration starten**
 5. **Fortschritt beobachten** (Live-Updates)
+
+![Planner Migration Interface](Move2Notion_screen_planner.png)
 
 ---
 
