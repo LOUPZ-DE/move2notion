@@ -3,7 +3,7 @@
 **Automatisierte Migration von Microsoft-Daten nach Notion**
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC_BY--NC_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
 
 ---
 
@@ -194,7 +194,17 @@ mypy core/ tools/
 
 ## 📄 Lizenz
 
-MIT License © 2025
+Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) © 2025 LOUPZ
+
+**Sie dürfen:**
+- ✅ Das Material teilen und weiterverbreiten
+- ✅ Das Material remixen, verändern und darauf aufbauen
+
+**Unter folgenden Bedingungen:**
+- **Attribution** — Namensnennung erforderlich
+- **NonCommercial** — Keine kommerzielle Nutzung erlaubt (kein Wiederverkauf)
+
+Siehe [LICENSE](LICENSE) für Details.
 
 ---
 
