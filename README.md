@@ -194,7 +194,7 @@ mypy core/ tools/
 
 ## 📄 Lizenz
 
-Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) © 2025 LOUPZ
+Creative Commons Attribution-NonCommercial 4.0 International (CC BY-NC 4.0) © 2025 LOUPZ GmbH & Co. KG
 
 **Sie dürfen:**
 - ✅ Das Material teilen und weiterverbreiten
