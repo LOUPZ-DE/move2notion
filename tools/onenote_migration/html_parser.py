@@ -13,7 +13,173 @@ from typing import List, Dict, Any, Tuple, Optional
 from bs4 import BeautifulSoup, NavigableString, Tag
 
 
-def build_rich_text(node: Tag) -> List[Dict[str, Any]]:
+# Marker für unvollständige Links (für Pass 2)
+INCOMPLETE_LINK_MARKER = " (Verlinkung unvollständig)"
+
+
+def is_onenote_internal_link(href: str) -> bool:
+    """Prüft ob ein Link ein OneNote-interner Link ist."""
+    if not href:
+        return False
+    return (
+        href.startswith("onenote:") or
+        "page-id=" in href.lower() or
+        "&section-id=" in href.lower() or
+        "onenote/pages/" in href.lower()
+    )
+
+
+def extract_page_id_from_link(href: str) -> Optional[str]:
+    """Extrahiert die OneNote Page-ID aus verschiedenen Link-Formaten."""
+    if not href:
+        return None
+    
+    patterns = [
+        r"page-id=\{?([a-f0-9-]+)\}?",  # page-id={guid} oder page-id=guid
+        r"page-id=([^&]+)",              # page-id=...&
+        r"/pages/([^/?\s]+)",            # /pages/id
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, href, re.IGNORECASE)
+        if match:
+            return match.group(1).strip("{}")
+    
+    return None
+
+
+def process_onenote_link(href: str) -> Tuple[str, str]:
+    """
+    Verarbeitet einen Link und markiert OneNote-interne Links.
+    
+    Returns:
+        (url, suffix) - URL bleibt erhalten, suffix wird an Text angehängt
+    """
+    if is_onenote_internal_link(href):
+        # OneNote-interner Link: Original-URL behalten, aber markieren
+        return href, INCOMPLETE_LINK_MARKER
+    
+    # Normaler externer Link
+    return href, ""
+
+
+def process_list_recursive(
+    list_el: Tag,
+    depth: int = 0,
+    max_depth: int = 3,
+    checkbox_unicode_true: Tuple = ("☑", "✅", "✓", "✔"),
+    checkbox_unicode_false: Tuple = ("☐", "⬜", "☒", "◻"),
+    handle_images_fn=None,
+    blocks_ref=None
+) -> List[Dict[str, Any]]:
+    """
+    Rekursive Listen-Verarbeitung mit Nested List Support (max. 3 Ebenen).
+    
+    Args:
+        list_el: Das ul/ol Element
+        depth: Aktuelle Verschachtelungstiefe (0-2)
+        max_depth: Maximale Verschachtelungstiefe (Standard: 3)
+        checkbox_unicode_true: Tuple mit Unicode-Zeichen für aktivierte Checkboxen
+        checkbox_unicode_false: Tuple mit Unicode-Zeichen für deaktivierte Checkboxen
+        handle_images_fn: Funktion zur Bildverarbeitung (optional)
+        blocks_ref: Referenz zur blocks-Liste für Bilder (optional)
+        
+    Returns:
+        Liste von Notion-Blöcken
+    """
+    items: List[Dict[str, Any]] = []
+    ordered = (list_el.name.lower() == "ol")
+    block_type = "numbered_list_item" if ordered else "bulleted_list_item"
+    
+    for li in list_el.find_all("li", recursive=False):
+        # Bilder-Check (wenn Funktion übergeben wurde)
+        if handle_images_fn and blocks_ref is not None:
+            has_images = handle_images_fn(li, create_paragraph=False)
+            if has_images:
+                continue  # Bilder wurden bereits zur blocks_ref hinzugefügt
+        
+        # To-Do Detection
+        checked = False
+        is_todo = False
+        
+        # Checkbox input
+        cb = li.find("input", {"type": "checkbox"})
+        if cb:
+            is_todo = True
+            checked = cb.has_attr("checked")
+        
+        # data-tag="to-do"
+        if not is_todo and (li.get("data-tag") and "to-do" in li.get("data-tag", "").lower()):
+            is_todo = True
+        
+        # Checkbox als Bild
+        if not is_todo:
+            img = li.find("img")
+            if img and any(x in (img.get("alt", "").lower()) for x in ["to do", "todo", "checked", "unchecked"]):
+                is_todo = True
+                checked = "check" in img.get("alt", "").lower()
+        
+        # Unicode-Checkboxen
+        if not is_todo:
+            text = li.get_text(" ", strip=True)
+            if text.startswith(checkbox_unicode_true):
+                is_todo = True
+                checked = True
+            elif text.startswith(checkbox_unicode_false):
+                is_todo = True
+                checked = False
+            elif re.match(r"^\s*\[(x|X)\]\s+", text):
+                is_todo = True
+                checked = True
+            elif re.match(r"^\s*\[\s\]\s+", text):
+                is_todo = True
+                checked = False
+        
+        # Block erstellen
+        if is_todo:
+            item = {
+                "object": "block",
+                "type": "to_do",
+                "to_do": {
+                    "rich_text": build_rich_text(li, exclude_nested_lists=True),
+                    "checked": checked
+                }
+            }
+        else:
+            item = {
+                "object": "block",
+                "type": block_type,
+                block_type: {
+                    "rich_text": build_rich_text(li, exclude_nested_lists=True)
+                }
+            }
+        
+        # Verschachtelte Liste finden und verarbeiten (wenn noch nicht max depth)
+        if depth < max_depth - 1:  # -1 weil depth bei 0 startet
+            nested_list = li.find(["ul", "ol"], recursive=False)
+            if nested_list:
+                children = process_list_recursive(
+                    nested_list,
+                    depth=depth + 1,
+                    max_depth=max_depth,
+                    checkbox_unicode_true=checkbox_unicode_true,
+                    checkbox_unicode_false=checkbox_unicode_false,
+                    handle_images_fn=handle_images_fn,
+                    blocks_ref=blocks_ref
+                )
+                if children:
+                    # Children zum Block hinzufügen
+                    if is_todo:
+                        item["to_do"]["children"] = children
+                    else:
+                        item[block_type]["children"] = children
+        
+        items.append(item)
+    
+    return items
+
+
+def build_rich_text(node: Tag, exclude_nested_lists: bool = False) -> List[Dict[str, Any]]:
     """
     Rich-Text aus HTML-Element erstellen mit Formatierungs-Support.
     
@@ -78,6 +244,10 @@ def build_rich_text(node: Tag) -> List[Dict[str, Any]]:
         elif isinstance(n, Tag):
             tag_name = n.name.lower()
             
+            # Verschachtelte Listen überspringen wenn gewünscht (für Nested List Support)
+            if exclude_nested_lists and tag_name in ("ul", "ol"):
+                return
+            
             # Neue Annotations basierend auf Tag UND Style
             new_annotations = annotations.copy()
             
@@ -118,9 +288,12 @@ def build_rich_text(node: Tag) -> List[Dict[str, Any]]:
                     # Link-Text mit aktuellen Formatierungen
                     txt = n.get_text()
                     if txt:
+                        # OneNote-interne Links erkennen und markieren
+                        link_url, link_suffix = process_onenote_link(href)
+                        display_text = txt + link_suffix if link_suffix else txt
                         parts.append({
                             "type": "text",
-                            "text": {"content": txt, "link": {"url": href}},
+                            "text": {"content": display_text, "link": {"url": link_url}},
                             "annotations": new_annotations.copy()
                         })
                     return  # Kinder nicht mehr verarbeiten
@@ -215,7 +388,32 @@ def html_to_blocks_and_tables(
         })
     
     def rewrite_resource_url_to_graph(site_id: str, href: str) -> Optional[str]:
-        """OneNote Resource-URL zu Graph API URL umschreiben."""
+        """OneNote Resource-URL zu Graph API URL umschreiben oder korrigieren.
+        
+        Unterstützt verschiedene URL-Formate:
+        1. siteCollections-Format: https://graph.microsoft.com/v1.0/siteCollections/.../$value
+           → wird zu /sites/...//content umgeschrieben
+        2. Relative URLs: /onenote/resources/{id} → Graph API URL
+        3. Bereits korrekte /sites/ URLs: werden direkt zurückgegeben
+        """
+        # Fall 1: siteCollections-Format (MUSS umgeschrieben werden!)
+        if href.startswith("https://graph.microsoft.com/") and "/siteCollections/" in href:
+            # Extrahiere Resource-ID aus URL
+            m = re.search(r"/onenote/resources/([^/$?]+)", href)
+            if m:
+                res_id = m.group(1)
+                # Korrigiere URL: siteCollections → sites, $value → content
+                return f"https://graph.microsoft.com/v1.0/sites/{site_id}/onenote/resources/{res_id}/content"
+            return None
+        
+        # Fall 2: Bereits korrekte /sites/ URL
+        if href.startswith("https://graph.microsoft.com/") and "/sites/" in href:
+            if "/onenote/resources/" in href:
+                # URL ist bereits korrekt formatiert
+                return href
+            return None
+        
+        # Fall 3: Relative OneNote Resource-URL
         m = re.search(r"/onenote/resources/([^/?]+)", href)
         if not m:
             return None
@@ -386,63 +584,22 @@ def html_to_blocks_and_tables(
             txt = code_el.get_text() if code_el else el.get_text()
             add_code(txt.strip())
         
-        # Listen
+        # Listen - mit Nested List Support (max. 3 Ebenen)
         elif name in ("ul", "ol"):
-            ordered = (name == "ol")
-            for li in el.find_all("li", recursive=False):
-                # WORKAROUND: Listen mit Bildern aufbrechen!
-                has_images = handle_images_with_split(li, create_paragraph=False)
-                
-                if has_images:
-                    # Bilder wurden bereits verarbeitet, skip den Rest
-                    continue
-                
-                # To-Do Detection (nur wenn keine Bilder)
-                checked = False
-                is_todo = False
-                
-                # Checkbox input
-                cb = li.find("input", {"type": "checkbox"})
-                if cb:
-                    is_todo = True
-                    checked = cb.has_attr("checked")
-                
-                # data-tag="to-do"
-                if not is_todo and (li.get("data-tag") and "to-do" in li.get("data-tag", "").lower()):
-                    is_todo = True
-                
-                # Checkbox als Bild
-                if not is_todo:
-                    img = li.find("img")
-                    if img and any(x in (img.get("alt", "").lower()) for x in ["to do", "todo", "checked", "unchecked"]):
-                        is_todo = True
-                        checked = "check" in img.get("alt", "").lower()
-                
-                # Unicode-Checkboxen
-                if not is_todo:
-                    text = li.get_text(" ", strip=True)
-                    if text.startswith(checkbox_unicode_true):
-                        is_todo = True
-                        checked = True
-                    elif text.startswith(checkbox_unicode_false):
-                        is_todo = True
-                        checked = False
-                    elif re.match(r"^\s*\[(x|X)\]\s+", text):
-                        is_todo = True
-                        checked = True
-                    elif re.match(r"^\s*\[\s\]\s+", text):
-                        is_todo = True
-                        checked = False
-                
-                if is_todo:
-                    add_todo(li, checked=checked)
-                else:
-                    t = "numbered_list_item" if ordered else "bulleted_list_item"
-                    blocks.append({
-                        "object": "block",
-                        "type": t,
-                        t: {"rich_text": build_rich_text(li)}
-                    })
+            # Nur top-level Listen verarbeiten (nicht verschachtelte)
+            if el.parent and el.parent.name == "li":
+                continue  # Überspringe - wird von Parent verarbeitet
+            
+            list_blocks = process_list_recursive(
+                el, 
+                depth=0, 
+                max_depth=3,
+                checkbox_unicode_true=checkbox_unicode_true,
+                checkbox_unicode_false=checkbox_unicode_false,
+                handle_images_fn=handle_images_with_split,
+                blocks_ref=blocks
+            )
+            blocks.extend(list_blocks)
         
         # Paragraphen
         elif name == "p":
@@ -486,6 +643,26 @@ def html_to_blocks_and_tables(
             if rows:
                 tables.append(rows)
         
+        # WICHTIG: Direkte <img>-Tags (nicht in <p>) verarbeiten!
+        elif name == "img":
+            img_id = id(el)
+            if img_id not in processed_imgs:
+                processed_imgs.add(img_id)
+                src = el.get("data-fullres-src") or el.get("data-src") or el.get("src")
+                if src:
+                    print(f"[📸] Direktes Bild gefunden: {src[:80]}...")
+                    data, ctype, fname = fetch_resource(src)
+                    if data:
+                        print(f"[📥] Bild heruntergeladen: {fname} ({len(data)} bytes, {ctype})")
+                        upload_id = notion_client.upload_file(fname, data, ctype)
+                        if upload_id:
+                            print(f"[✅] Bild hochgeladen: {upload_id}")
+                            blocks.append(notion_client.create_image_block(upload_id))
+                        else:
+                            print(f"[❌] Bild-Upload fehlgeschlagen: {fname}")
+                    else:
+                        print(f"[❌] Bild-Download fehlgeschlagen: {src[:80]}...")
+        
         # Links mit Dateien
         elif name == "a":
             href = el.get("href", "")
@@ -514,6 +691,9 @@ def append_table(notion_client, parent_block_id: str, rows: List[List[str]]):
     """
     Tabelle als echte Table-Blöcke zu Notion hinzufügen.
     
+    WICHTIG: Notion API erfordert, dass Tabellen MIT ihren Zeilen (children) 
+    erstellt werden. Leere Tabellen sind nicht erlaubt!
+    
     Args:
         notion_client: NotionClient-Instanz
         parent_block_id: Parent-Block-ID (Page oder Block)
@@ -522,39 +702,39 @@ def append_table(notion_client, parent_block_id: str, rows: List[List[str]]):
     if not rows:
         return
     
-    # Table-Block erstellen
-    table_block = {
-        "object": "block",
-        "type": "table",
-        "table": {
-            "table_width": max(len(r) for r in rows),
-            "has_column_header": False,
-            "has_row_header": False
-        }
-    }
+    # Berechne Tabellenbreite (max. Spalten in allen Zeilen)
+    table_width = max(len(r) for r in rows) if rows else 1
     
-    # Table erstellen und ID holen
-    res = notion_client.append_blocks(parent_block_id, [table_block])
-    created = res.get("results", [])
-    if not created:
-        print("[⚠] Table creation failed")
-        return
-    
-    table_id = created[-1].get("id")
-    
-    # Table-Row Blöcke erstellen
-    row_blocks = []
+    # Erstelle Row-Blöcke als children
+    row_children = []
     for r in rows:
-        cells = [[{"type": "text", "text": {"content": c[:2000]}}] for c in r]
-        row_blocks.append({
+        # Padding: Jede Zeile muss gleich viele Zellen haben
+        padded_row = r + [""] * (table_width - len(r))
+        cells = [[{"type": "text", "text": {"content": str(c)[:2000]}}] for c in padded_row]
+        row_children.append({
             "object": "block",
             "type": "table_row",
             "table_row": {"cells": cells}
         })
     
-    # Rows hinzufügen
-    notion_client.append_blocks(table_id, row_blocks)
-    time.sleep(0.12)  # Rate limiting
+    # Table-Block MIT children erstellen (Notion API Requirement!)
+    table_block = {
+        "object": "block",
+        "type": "table",
+        "table": {
+            "table_width": table_width,
+            "has_column_header": len(rows) > 1,  # Erste Zeile als Header wenn > 1 Zeile
+            "has_row_header": False,
+            "children": row_children
+        }
+    }
+    
+    # Table mit allen Zeilen auf einmal erstellen
+    try:
+        notion_client.append_blocks(parent_block_id, [table_block])
+        time.sleep(0.12)  # Rate limiting
+    except Exception as e:
+        print(f"[⚠] Table creation failed: {e}")
 
 
 # Backward compatibility

@@ -29,12 +29,72 @@ class ContentMapper:
         self.ms_graph = ms_graph_client
         self.site_id = site_id
 
+    def should_skip_page(
+        self,
+        onenote_page: Dict[str, Any],
+        database_id: str
+    ) -> tuple[bool, Optional[str]]:
+        """
+        Prüft ob eine Seite übersprungen werden kann (bereits importiert und unverändert).
+        
+        Args:
+            onenote_page: OneNote-Page-Metadaten
+            database_id: Notion-Datenbank-ID
+            
+        Returns:
+            (should_skip, reason) - True wenn übersprungen werden soll, mit Grund
+        """
+        page_id = onenote_page["id"]
+        page_title = onenote_page.get("title", "Unknown")
+        onenote_modified = onenote_page.get("lastModifiedDateTime", "")
+        
+        # Prüfe ob Seite bereits in Notion existiert
+        existing_page = self.notion.find_page_with_properties(
+            database_id,
+            "OneNotePageId",
+            page_id
+        )
+        
+        if not existing_page:
+            return False, None  # Neue Seite, nicht überspringen
+        
+        # Hole LastEditedUtc aus Notion
+        properties = existing_page.get("properties", {})
+        last_edited_prop = properties.get("LastEditedUtc", {})
+        
+        if last_edited_prop.get("type") == "date":
+            notion_date = last_edited_prop.get("date", {})
+            notion_modified = notion_date.get("start", "") if notion_date else ""
+            
+            if notion_modified and onenote_modified:
+                # Normalisiere Timestamps für Vergleich (nur Datum + Zeit bis MINUTE!)
+                # Notion speichert Date-Felder nur bis zur Minute, daher Sekunden ignorieren
+                onenote_ts = onenote_modified[:16]  # "2025-11-25T18:30"
+                notion_ts = notion_modified[:16] if len(notion_modified) >= 16 else notion_modified
+                
+                # Vergleiche Timestamps (Minutengenauigkeit)
+                if onenote_ts <= notion_ts:
+                    return True, f"unverändert seit {notion_modified[:10]}"
+                else:
+                    # Debug: Zeige warum nicht übersprungen wird
+                    print(f"    [🔍] {page_title}: OneNote={onenote_ts} > Notion={notion_ts} (geändert)")
+            else:
+                # Debug: Fehlende Timestamps
+                print(f"    [🔍] {page_title}: Timestamps fehlen (OneNote={onenote_modified[:19] if onenote_modified else 'None'}, Notion={notion_modified})")
+        else:
+            # LastEditedUtc Property nicht gefunden oder falscher Typ
+            print(f"    [🔍] {page_title}: LastEditedUtc-Property nicht gefunden oder falscher Typ")
+        
+        return False, None  # Geändert oder kein Vergleich möglich
+
     def map_page_to_notion(
         self,
         onenote_page: Dict[str, Any],
         database_id: str,
         section_name: str = "",
-        notebook_name: str = ""
+        notebook_name: str = "",
+        section_group: str = "",
+        skip_unchanged: bool = False
     ) -> Optional[str]:
         """
         OneNote-Page zu Notion konvertieren.
@@ -44,6 +104,8 @@ class ContentMapper:
             database_id: Ziel-Notion-Datenbank-ID
             section_name: Section-Name für Kategorisierung
             notebook_name: Notebook-Name für Kategorisierung
+            section_group: Section-Group-Name (verschachtelte Ordner in OneNote)
+            skip_unchanged: Wenn True, unveränderte Seiten überspringen
             
         Returns:
             Notion-Page-ID oder None bei Fehler
@@ -79,6 +141,7 @@ class ContentMapper:
                 database_id=database_id,
                 section=section_name,
                 notebook=notebook_name,
+                section_group=section_group,
                 created=created_time,
                 modified=modified_time,
                 web_url=web_url
@@ -173,6 +236,7 @@ class ContentMapper:
         database_id: str,
         section: str = "",
         notebook: str = "",
+        section_group: str = "",
         created: Optional[str] = None,
         modified: Optional[str] = None,
         web_url: Optional[str] = None
@@ -187,7 +251,7 @@ class ContentMapper:
             db = self.notion.get_database(database_id)
             db_props = db.get("properties", {})
             print(f"[📋] Datenbank-Properties: {list(db_props.keys())}")
-            print(f"[📋] section_name='{section}', notebook='{notebook}'")
+            print(f"[📋] section_name='{section}', section_group='{section_group}', notebook='{notebook}'")
         except Exception as e:
             print(f"[❌] Fehler beim Abrufen der DB-Properties: {e}")
             db_props = {}
@@ -217,10 +281,37 @@ class ContentMapper:
             if prop_type == "select":
                 properties["Section"] = {"select": {"name": section}}
                 print(f"[✅] Section gesetzt: {section}")
+            elif prop_type == "rich_text":
+                properties["Section"] = {
+                    "rich_text": [{"type": "text", "text": {"content": section}}]
+                }
+                print(f"[✅] Section gesetzt (rich_text): {section}")
             else:
                 print(f"[⚠] Section-Property ist nicht vom Typ 'select', sondern '{prop_type}'")
         elif section:
             print(f"[⚠] Section-Property existiert nicht in Datenbank (section_name='{section}')")
+        
+        # SectionGroup - nur wenn Property existiert (für verschachtelte Section Groups)
+        if section_group and "SectionGroup" in db_props:
+            prop_type = db_props["SectionGroup"].get("type")
+            print(f"[🔍] SectionGroup-Property gefunden: Type={prop_type}, Value={section_group}")
+            if prop_type == "select":
+                properties["SectionGroup"] = {"select": {"name": section_group}}
+                print(f"[✅] SectionGroup gesetzt: {section_group}")
+            elif prop_type == "rich_text":
+                properties["SectionGroup"] = {
+                    "rich_text": [{"type": "text", "text": {"content": section_group}}]
+                }
+                print(f"[✅] SectionGroup gesetzt (rich_text): {section_group}")
+            elif prop_type == "multi_select":
+                # Multi-Select: Gruppen-Pfad aufteilen (z.B. "Gruppe1/Untergruppe2" -> ["Gruppe1", "Untergruppe2"])
+                group_parts = [g.strip() for g in section_group.split("/") if g.strip()]
+                properties["SectionGroup"] = {"multi_select": [{"name": g} for g in group_parts]}
+                print(f"[✅] SectionGroup gesetzt (multi_select): {group_parts}")
+            else:
+                print(f"[⚠] SectionGroup-Property ist nicht vom Typ 'select/rich_text/multi_select', sondern '{prop_type}'")
+        elif section_group:
+            print(f"[⚠] SectionGroup-Property existiert nicht in Datenbank (section_group='{section_group}')")
         
         # SourceURL - nur wenn Property existiert
         if web_url and "SourceURL" in db_props and db_props["SourceURL"].get("type") == "url":

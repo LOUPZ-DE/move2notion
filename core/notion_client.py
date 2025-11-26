@@ -71,12 +71,21 @@ class NotionClient:
         database_id = self._normalize_uuid(database_id)
         return self._make_request("GET", f"/databases/{database_id}")
 
-    def query_database(self, database_id: str, filter_obj: Optional[Dict] = None) -> Dict[str, Any]:
-        """Datenbank abfragen."""
+    def query_database(
+        self, 
+        database_id: str, 
+        filter_obj: Optional[Dict] = None,
+        start_cursor: Optional[str] = None,
+        page_size: int = 100
+    ) -> Dict[str, Any]:
+        """Datenbank abfragen mit Pagination-Support."""
         database_id = self._normalize_uuid(database_id)
-        data = {}
+        data = {"page_size": min(page_size, 100)}
+        
         if filter_obj:
             data["filter"] = filter_obj
+        if start_cursor:
+            data["start_cursor"] = start_cursor
 
         return self._make_request("POST", f"/databases/{database_id}/query", json=data)
 
@@ -117,28 +126,51 @@ class NotionClient:
         """Seite archivieren oder wiederherstellen."""
         self._make_request("PATCH", f"/pages/{page_id}", json={"archived": archived})
 
-    def get_block_children(self, block_id: str) -> List[Dict[str, Any]]:
-        """Alle Kind-Blöcke eines Blocks/einer Seite abrufen."""
+    def get_block_children(self, block_id: str, start_cursor: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Kind-Blöcke eines Blocks/einer Seite abrufen (mit Pagination).
+        
+        Returns:
+            Dict mit 'results', 'has_more', 'next_cursor'
+        """
+        params = {"page_size": 100}
+        if start_cursor:
+            params["start_cursor"] = start_cursor
+        
+        return self._make_request("GET", f"/blocks/{block_id}/children", params=params)
+    
+    def get_all_block_children(self, block_id: str) -> List[Dict[str, Any]]:
+        """Alle Kind-Blöcke eines Blocks/einer Seite abrufen (alle Seiten)."""
         all_blocks = []
         has_more = True
-        start_cursor = None
+        cursor = None
         
         while has_more:
-            params = {"page_size": 100}
-            if start_cursor:
-                params["start_cursor"] = start_cursor
-            
-            response = self._make_request("GET", f"/blocks/{block_id}/children", params=params)
+            response = self.get_block_children(block_id, start_cursor=cursor)
             all_blocks.extend(response.get("results", []))
             
             has_more = response.get("has_more", False)
-            start_cursor = response.get("next_cursor")
+            cursor = response.get("next_cursor")
         
         return all_blocks
     
-    def update_block(self, block_id: str, archived: bool = False) -> None:
-        """Block archivieren (löschen) oder wiederherstellen."""
-        self._make_request("PATCH", f"/blocks/{block_id}", json={"archived": archived})
+    def update_block(self, block_id: str, content: Optional[Dict[str, Any]] = None, archived: bool = False) -> None:
+        """
+        Block aktualisieren.
+        
+        Args:
+            block_id: Block-ID
+            content: Block-Content (z.B. {"paragraph": {"rich_text": [...]}})
+            archived: True zum Archivieren/Löschen
+        """
+        data = {}
+        if content:
+            data.update(content)
+        if archived:
+            data["archived"] = archived
+        
+        if data:
+            self._make_request("PATCH", f"/blocks/{block_id}", json=data)
     
     def append_blocks(self, block_id: str, children: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Blöcke an bestehende Seite anhängen."""
@@ -154,7 +186,17 @@ class NotionClient:
         return result or {}
 
     def find_page_by_property(self, database_id: str, property_name: str, property_value: str) -> Optional[str]:
-        """Seite anhand einer Property finden."""
+        """Seite anhand einer Property finden (nur ID)."""
+        result = self.find_page_with_properties(database_id, property_name, property_value)
+        return result["id"] if result else None
+    
+    def find_page_with_properties(self, database_id: str, property_name: str, property_value: str) -> Optional[Dict[str, Any]]:
+        """
+        Seite anhand einer Property finden (vollständige Page inkl. Properties).
+        
+        Returns:
+            Vollständiges Page-Objekt oder None
+        """
         # Versuche verschiedene Property-Typen
         filters = [
             {"property": property_name, "rich_text": {"equals": property_value}},
@@ -167,7 +209,7 @@ class NotionClient:
                 response = self.query_database(database_id, filter_obj)
                 results = response.get("results", [])
                 if results:
-                    return results[0]["id"]
+                    return results[0]  # Vollständige Page zurückgeben
             except NotionAPIError:
                 continue
 

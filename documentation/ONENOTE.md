@@ -44,9 +44,11 @@ python -m tools.onenote_migration.cli \
 | `--section` | - | Section-Name (optional) |
 | `--database-id` | ✅ | Notion-Datenbank-ID |
 | `--since YYYY-MM-DD` | - | Nur geänderte seit Datum |
-| `--resume` | - | Überspringe unveränderte |
+| `--resume` | - | Überspringe unveränderte Seiten (basierend auf LastEditedUtc) |
 | `--dry-run` | - | Test ohne Änderungen |
 | `--verbose` | - | Detaillierte Ausgaben |
+| `--resolve-links` | - | **NUR** Link-Resolution ohne Import (für nachträgliche Korrekturen) |
+| `--state-path` | - | Pfad für State-Datei |
 
 ---
 
@@ -57,6 +59,7 @@ python -m tools.onenote_migration.cli \
 - **Überschriften** (H1-H3) → Notion Heading-Blöcke
 - **Absätze** → Notion Paragraph-Blöcke  
 - **Listen** (ul, ol) → Bulleted/Numbered Items
+- **Nested Lists** → Verschachtelte Listen bis zu 3 Ebenen! *(NEU)*
 - **Code-Blöcke** → Notion Code-Blöcke
 - **Zitate** → Notion Quote-Blöcke
 - **Tabellen** → Notion Table-Blöcke
@@ -82,6 +85,45 @@ Automatische Erkennung von Checkboxen in mehreren Formaten:
 - Unicode: `☑`, `☐`, `✅`, `◻`
 - Markdown: `[x]`, `[ ]`
 - Data-Attribute: `data-tag="to-do"`
+
+### ✅ OneNote-interne Links (automatisch)
+
+OneNote-Seiten können Links zu anderen Seiten im selben Notizbuch enthalten. Diese werden **automatisch** erkannt und korrigiert.
+
+> **Wichtig:** Beim normalen Import wird die Link-Resolution **automatisch** am Ende ausgeführt!  
+> Das Flag `--resolve-links` ist **nur für nachträgliche Korrekturen** gedacht.
+
+**Was passiert beim Import?**
+1. Seiten werden nach Notion importiert
+2. Interne Links werden erkannt (`onenote:...`, `page-id=...`)
+3. **Automatisch:** Link-Resolution läuft am Ende des Imports
+4. Links zu bereits importierten Seiten werden zu Notion-Links korrigiert
+
+```bash
+# Standard-Import (Link-Resolution läuft automatisch!)
+python -m tools.onenote_migration.cli \
+  --site-url "..." \
+  --notebook "..." \
+  --database-id "..."
+```
+
+**Wann `--resolve-links` verwenden?**
+
+Nur in diesen Fällen:
+- Nachträglicher Import weiterer Seiten (neue Verlinkungsziele)
+- Manuelle Korrektur nach Fehlern
+
+```bash
+# NUR Link-Resolution (KEIN Import!)
+python -m tools.onenote_migration.cli \
+  --site-url "..." \
+  --database-id "..." \
+  --resolve-links
+```
+
+**Nicht auflösbare Links:**
+- Links zu Seiten außerhalb des Imports bleiben markiert: `"(Verlinkung unvollständig)"`
+- Können später manuell in Notion korrigiert werden
 
 ### ✅ Asset-Handling (Bilder & Dateien)
 
@@ -117,17 +159,23 @@ Notion-Page enthält 3 inline Bild-Blöcke ✅
   - **Vorteil:** Alte Version bleibt im Archiv als Backup
 
 **Resume-Modus:**
-- `--resume` überspringt unveränderte Seiten
-- **Checksum-Vergleich**: Basiert auf HTML-Content-Hash
-- **State-Datei**: `~/.onenote2notion/state.json`
-- **Zeitfilter**: `--since 2025-01-01` für inkrementelle Imports
+- `--resume` überspringt bereits importierte, unveränderte Seiten
+- **Timestamp-Vergleich**: `OneNote.lastModifiedDateTime` vs. `Notion.LastEditedUtc`
+- **Voraussetzung**: Notion-Datenbank muss Feld `LastEditedUtc` (Date) haben
+- **Zeitfilter**: `--since 2025-01-01` für inkrementelle Imports (MS Graph Filter)
 
 **Beispiel:**
 ```
 Import 1: Seite "Meeting Notes" erstellt
-Import 2: Seite unverändert → übersprungen (--resume)
-Import 3: Seite geändert → alte archiviert, neue erstellt
+Import 2 (--resume): 
+    ⏭️ Seite: Meeting Notes (unverändert seit 2025-11-20)
+Import 3 (--resume): Seite in OneNote geändert → alte archiviert, neue erstellt
 ```
+
+**Wie es funktioniert:**
+1. Prüft ob Seite bereits in Notion existiert (via `OneNotePageId`)
+2. Vergleicht Timestamps: `OneNote.lastModifiedDateTime` ≤ `Notion.LastEditedUtc`
+3. Wenn unverändert → Seite wird übersprungen (spart API-Calls!)
 
 ---
 
@@ -253,10 +301,11 @@ rm ~/.onenote2notion/state.json
 
 ## Bekannte Limitationen
 
-- **Nested Lists**: Werden flach dargestellt (Notion-API-Limitation)
+- **Nested Lists**: Max. 3 Ebenen (Notion-API-Limitation)
 - **Embedded Videos**: Werden übersprungen (nur Links bleiben)
 - **Page-Größe**: Max. 150 Blöcke pro Page (Notion-Limit)
 - **Datei-Größe**: Max. 20 MB pro File-Upload (Notion-Limit)
+- **Interne Links**: Nur zu Seiten im selben Import auflösbar
 
 **Was funktioniert:**
 - ✅ Bilder werden permanent in Notion hochgeladen
@@ -264,3 +313,5 @@ rm ~/.onenote2notion/state.json
 - ✅ To-Do-Listen mit Checkbox-Status
 - ✅ Tabellen als echte Notion-Tables
 - ✅ Inline-Links
+- ✅ **Nested Lists** bis zu 3 Ebenen Tiefe *(NEU)*
+- ✅ **OneNote-interne Links** automatisch korrigiert *(NEU)*
