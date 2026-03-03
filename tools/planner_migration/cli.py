@@ -237,7 +237,7 @@ Plan ID finden:
 
                 # Seite erstellen
                 self.notion.create_page(database_id, properties, children)
-                
+
                 success_count += 1
                 task_name = row.get('Name', 'Unbenannt')
                 print(f"[{i+1}/{len(rows)}] Erstellt: {task_name}")

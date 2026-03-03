@@ -43,27 +43,37 @@ class PlannerAPIMapper:
         row: Dict[str, Any] = {}
 
         # ===== Basis-Felder =====
-        row["id"] = task.get("id", "")
         row["Name"] = task.get("title", "Unbenannte Aufgabe")
         
         # ===== Bucket (Kategorie) =====
         bucket_id = task.get("bucketId")
+        bucket_name = None
         if bucket_id and bucket_id in self.buckets_cache:
-            row["Bucket"] = self.buckets_cache[bucket_id]
+            bucket_name = self.buckets_cache[bucket_id]
         else:
-            row["Bucket"] = "Kein Bucket"
+            bucket_name = "Kein Bucket"
 
-        # ===== Fortschritt =====
+        if isinstance(bucket_name, str):
+            bucket_name = bucket_name.strip()
+            if bucket_name.lower().startswith("leistungsphase "):
+                suffix = bucket_name.replace("Leistungsphase ", "", 1).strip()
+                if suffix.isdigit() and len(suffix) == 2:
+                    bucket_name = f"LPH {int(suffix)}"
+            elif bucket_name.lower().startswith("lp ") and not bucket_name.lower().startswith("lph "):
+                bucket_name = "LPH " + bucket_name[3:]
+
+        row["LPH/Aufgabentyp"] = bucket_name
+
+        # ===== Fortschritt (Status) =====
         percent_complete = task.get("percentComplete", 0)
-        row["% Abgeschlossen"] = percent_complete
-        
+
         # Status ableiten
         if percent_complete == 100:
-            row["Status"] = "Abgeschlossen"
+            row["Status"] = "erledigt"
         elif percent_complete > 0:
-            row["Status"] = "In Bearbeitung"
+            row["Status"] = "in Arbeit"
         else:
-            row["Status"] = "Nicht begonnen"
+            row["Status"] = "Aufgabenpool"
 
         # ===== Priorität =====
         priority = task.get("priority")
@@ -71,8 +81,8 @@ class PlannerAPIMapper:
             0: "Dringend",
             1: "Dringend",
             2: "Dringend",
-            3: "Wichtig",
-            4: "Wichtig",
+            3: "Hoch",
+            4: "Hoch",
             5: "Mittel",
             6: "Niedrig",
             7: "Niedrig",
@@ -80,7 +90,8 @@ class PlannerAPIMapper:
             9: "Niedrig",
             10: "Niedrig"
         }
-        row["Priorität"] = priority_map.get(priority, "Mittel")
+        priority_key = priority if priority is not None else 5
+        row["Priorität"] = priority_map.get(priority_key, "Mittel")
 
         # ===== Zuweisungen =====
         assignments = task.get("assignments", {})
@@ -96,9 +107,9 @@ class PlannerAPIMapper:
         
         # Für direktes Notion People-Mapping via E-Mail
         if assigned_emails:
-            row["Zugewiesen an (Emails)"] = assigned_emails
+            row["verantwortlich (Emails)"] = assigned_emails
 
-        # ===== Tags (aus appliedCategories) =====
+        # ===== Fachdisziplin (aus appliedCategories) =====
         applied_categories = task.get("appliedCategories", {})
         tags = []
         for category_id in applied_categories.keys():
@@ -108,34 +119,9 @@ class PlannerAPIMapper:
                     tags.append(tag_name)
         
         if tags:
-            row["Tags"] = ", ".join(tags)
-
-        # ===== "Verspätet"-Feld (automatisch berechnet) =====
-        is_overdue = False
-        due_date = task.get("dueDateTime")
-        if due_date and percent_complete < 100:
-            try:
-                from datetime import timezone
-                due_dt = datetime.fromisoformat(due_date.replace("Z", "+00:00"))
-                now = datetime.now(timezone.utc)
-                if due_dt < now:
-                    is_overdue = True
-            except:
-                pass  # Bei Fehler: nicht verspätet
-        
-        row["Verspätet"] = is_overdue
+            row["Fachdisziplin"] = ", ".join(tags)
 
         # ===== Datumsfelder =====
-        # Startdatum
-        start_date = task.get("startDateTime")
-        if start_date:
-            try:
-                row["Startdatum"] = self._parse_iso_date(start_date)
-            except:
-                row["Startdatum"] = None
-        else:
-            row["Startdatum"] = None
-
         # Fälligkeitsdatum
         due_date = task.get("dueDateTime")
         if due_date:
@@ -146,29 +132,9 @@ class PlannerAPIMapper:
         else:
             row["Fälligkeitsdatum"] = None
 
-        # Abschlussdatum
-        completed_date = task.get("completedDateTime")
-        if completed_date:
-            try:
-                row["Abgeschlossen am"] = self._parse_iso_date(completed_date)
-            except:
-                row["Abgeschlossen am"] = None
-        else:
-            row["Abgeschlossen am"] = None
-
-        # Erstellungsdatum
-        created_date = task.get("createdDateTime")
-        if created_date:
-            try:
-                row["Erstellt am"] = self._parse_iso_date(created_date)
-            except:
-                row["Erstellt am"] = None
-        else:
-            row["Erstellt am"] = None
-
         # ===== Beschreibung & Checklisten (aus task_details) =====
         if task_details:
-            # Beschreibung
+            # Beschreibung (nur als Inhalt, nicht als Property)
             description = task_details.get("description", "")
             if description:
                 row["Beschreibung"] = description
@@ -200,15 +166,14 @@ class PlannerAPIMapper:
                     alias = ref.get("alias", "")
                     url = ref.get("url", "")
                     if alias and url:
-                        ref_items.append(f"[{alias}]({url})")
+                        ref_items.append({"title": alias, "url": url})
                     elif url:
-                        ref_items.append(url)
+                        ref_items.append({"title": url, "url": url})
                 
                 if ref_items:
-                    row["Referenzen"] = "\n".join(ref_items)
+                    row["Referenzen"] = ref_items
 
         # ===== Planner-spezifische IDs (für Tracking) =====
-        row["Vorgangsnummer (Planner)"] = task.get("id", "")
         row["Plan ID"] = task.get("planId", "")
 
         return row

@@ -49,22 +49,39 @@ class NotionClient:
         return uuid_str
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
-        """Generische HTTP-Anfrage an Notion API."""
+        """Generische HTTP-Anfrage an Notion API mit Retry bei Verbindungsfehlern."""
         url = f"https://api.notion.com/v1{endpoint}"
+        last_exc = None
 
-        if method.lower() == "get":
-            response = requests.get(url, headers=self.auth.notion.headers, **kwargs)
-        elif method.lower() == "post":
-            response = requests.post(url, headers=self.auth.notion.headers, **kwargs)
-        elif method.lower() == "patch":
-            response = requests.patch(url, headers=self.auth.notion.headers, **kwargs)
-        else:
-            raise ValueError(f"Unsupported HTTP method: {method}")
+        for attempt in range(3):
+            if attempt > 0:
+                time.sleep(1.5 * attempt)
+            try:
+                if method.lower() == "get":
+                    response = requests.get(url, headers=self.auth.notion.headers, **kwargs)
+                elif method.lower() == "post":
+                    response = requests.post(url, headers=self.auth.notion.headers, **kwargs)
+                elif method.lower() == "patch":
+                    response = requests.patch(url, headers=self.auth.notion.headers, **kwargs)
+                else:
+                    raise ValueError(f"Unsupported HTTP method: {method}")
 
-        if not response.ok:
-            raise NotionAPIError(f"Notion API error: {response.status_code} - {response.text}")
+                # Rate limit: kurze Pause nach jedem Request
+                if response.status_code == 429:
+                    retry_after = int(response.headers.get("Retry-After", 2))
+                    time.sleep(retry_after)
+                    continue
 
-        return response.json()
+                if not response.ok:
+                    raise NotionAPIError(f"Notion API error: {response.status_code} - {response.text}")
+
+                return response.json()
+
+            except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError) as e:
+                last_exc = e
+                continue
+
+        raise last_exc or NotionAPIError("Request failed after retries")
 
     def get_database(self, database_id: str) -> Dict[str, Any]:
         """Datenbank-Informationen abrufen."""
