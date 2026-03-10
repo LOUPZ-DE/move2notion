@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Planner Migration - MS → Notion Migration{% endblock %}
+{% block title %}Planner Migration - MS &rarr; Notion Migration{% endblock %}
 
 {% block content %}
 <div class="migration-dashboard">
@@ -12,38 +12,35 @@
         <form id="planner-migration-form">
             <div class="form-group">
                 <label for="planner_plan_id">Planner Plan ID:</label>
-                <input type="text" id="planner_plan_id" name="planner_plan_id" 
-                       placeholder="Plan-ID aus Microsoft Planner" 
+                <input type="text" id="planner_plan_id" name="planner_plan_id"
+                       placeholder="Plan-ID aus Microsoft Planner"
                        class="form-control" required>
                 <small>Die ID des Planner-Plans, der migriert werden soll</small>
             </div>
 
             <div class="form-group">
                 <label for="notion_database_id">Notion Datenbank-ID:</label>
-                <input type="text" id="notion_database_id" name="notion_database_id" 
-                       placeholder="Notion-Datenbank-ID" 
+                <input type="text" id="notion_database_id" name="notion_database_id"
+                       placeholder="Notion-Datenbank-ID oder Share-URL"
                        class="form-control" required>
-                <small>Die ID der Notion-Datenbank, in die die Tasks importiert werden</small>
+                <small>Datenbank-ID oder Notion-Share-URL (ID wird automatisch extrahiert)</small>
             </div>
 
-            <div class="form-group">
-                <label for="people_mapping">Personen-Mapping (optional):</label>
-                <input type="file" id="people_mapping" name="people_mapping" 
-                       accept=".csv" class="form-control">
-                <small>Optional: Ohne CSV werden Namen als Text eingetragen. Mit CSV werden Personen als @-Mentions mit Notifications verlinkt.</small>
-            </div>
-
-            <button type="submit" class="btn btn-success btn-large">Migration starten</button>
+            <button type="submit" id="planner-submit-btn" class="btn btn-success btn-large">Migration starten</button>
         </form>
     </div>
 
     <div id="planner-progress-section" class="hidden">
-        <h3>Migration läuft...</h3>
-        <div class="progress-bar">
-            <div id="planner-progress" class="progress-fill" style="width: 0%"></div>
+        <h3>Migration</h3>
+        <div class="phase-indicator">
+            <span id="planner-phase" class="phase-label">Initialisiere...</span>
         </div>
-        <div id="planner-status-text" class="status-text">Initialisiere...</div>
+        <div class="progress-bar">
+            <div id="planner-progress" class="progress-fill" style="width: 0%">0%</div>
+        </div>
+        <div id="planner-status-text" class="status-text">Warte auf Start...</div>
         <div id="planner-log-output" class="log-output"></div>
+        <div id="planner-summary" class="migration-summary hidden"></div>
     </div>
 </div>
 {% endblock %}
@@ -51,8 +48,12 @@
 {% block scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('planner-migration-form');
-    const progressSection = document.getElementById('planner-progress-section');
+    var form = document.getElementById('planner-migration-form');
+    var submitBtn = document.getElementById('planner-submit-btn');
+    var progressSection = document.getElementById('planner-progress-section');
+
+    // Notion-ID-Feld: URL oder rohe ID akzeptieren
+    window.app.bindNotionIdField(document.getElementById('notion_database_id'));
 
     // Plan-ID aus URL-Parameter vorausfuellen (von Overview)
     var urlParams = new URLSearchParams(window.location.search);
@@ -63,34 +64,44 @@ document.addEventListener('DOMContentLoaded', function() {
 
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
-        
-        const planId = document.getElementById('planner_plan_id').value;
-        const databaseId = document.getElementById('notion_database_id').value;
-        
+
+        var planId = document.getElementById('planner_plan_id').value;
+        var databaseId = window.app.extractNotionId(document.getElementById('notion_database_id').value);
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Migration laeuft...';
         progressSection.classList.remove('hidden');
-        
+
         try {
-            const response = await fetch('/api/planner/migrate', {
+            var response = await fetch('/api/planner/migrate', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    plan_id: planId,
-                    database_id: databaseId
-                })
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ plan_id: planId, database_id: databaseId })
             });
-            
-            const data = await response.json();
-            
-            if (response.ok) {
-                document.getElementById('planner-status-text').textContent = data.message;
-                // TODO: Polling für Status-Updates
-            } else {
-                alert('Fehler: ' + data.error);
+            var data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Unbekannter Fehler');
             }
+
+            // SSE-Client starten
+            var client = new window.app.SSEMigrationClient({
+                progressBarSelector: '#planner-progress',
+                statusTextSelector: '#planner-status-text',
+                logOutputSelector: '#planner-log-output',
+                phaseSelector: '#planner-phase',
+                summarySelector: '#planner-summary',
+                onComplete: function() {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Migration starten';
+                }
+            });
+            client.start(data.task_id);
+
         } catch (error) {
-            alert('Fehler beim Starten der Migration: ' + error.message);
+            window.app.showToast('Fehler: ' + error.message, 'error');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Migration starten';
         }
     });
 });

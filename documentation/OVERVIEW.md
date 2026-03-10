@@ -111,8 +111,9 @@ Nach dem Login im Web-GUI:
 ### Bedienung
 
 1. **"Gruppen laden"** klicken — ruft alle Microsoft 365-Gruppen ab
-2. Pro Gruppe **"Details laden"** klicken — lädt Notebooks und Plans
-3. **IDs kopieren** — Text in den ID-Feldern ist direkt selektierbar (`user-select: all`)
+2. Pro Gruppe **"Details laden"** klicken — lädt Notebooks und Plans (oder **"Alle Details laden"** für Batch-Abruf)
+3. **"Migrieren →"** Buttons bei Notebooks und Plans — öffnet die jeweilige Migration mit vorausgefüllten IDs
+4. **IDs kopieren** — Text in den ID-Feldern ist direkt selektierbar (`user-select: all`)
 
 ### Lazy-Loading
 
@@ -126,6 +127,10 @@ Das Web-GUI lädt Details nicht automatisch für alle Gruppen, um bei großen Te
 |----------|---------|--------------|
 | `/api/overview/groups` | GET | Alle Microsoft 365-Gruppen |
 | `/api/overview/groups/<id>/details` | GET | Notebooks + Plans einer Gruppe |
+| `/api/planner/migrate` | POST | Planner-Migration starten (Background-Thread) |
+| `/api/onenote/migrate` | POST | OneNote-Migration starten (Background-Thread) |
+| `/api/tasks/<id>/events` | GET | SSE-Stream für Live-Fortschritt |
+| `/api/tasks/<id>/status` | GET | Task-Status (Fallback für Reconnect) |
 
 **Response-Beispiel** (`/api/overview/groups`):
 
@@ -251,5 +256,7 @@ Write-Host "`n$added Gruppen hinzugefuegt (von $($groups.Count) gesamt)"
 - [x] Klickbare IDs im Web-GUI → "Migrieren →" Button leitet zur Planner-Migration mit vorausgefüllter Plan-ID weiter
 - [x] "Alle Details laden"-Button für Batch-Abruf mit Fortschrittsanzeige
 - [x] Session-Persistenz: Geladene Daten bleiben bei Seitenwechsel erhalten (sessionStorage)
+- [x] Live-Migrations-Fortschritt via SSE (Server-Sent Events) für Planner und OneNote
+- [x] OneNote Web-Migration vollständig implementiert (nicht mehr Stub)
 - [ ] Suchfilter für Gruppen
 - [ ] Export der Übersicht als CSV/JSON im Web-GUI

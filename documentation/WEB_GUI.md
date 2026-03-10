@@ -65,7 +65,8 @@ Server läuft auf: **http://localhost:8080**
 
 ```
 web/
-├── app.py                  # Flask-Hauptanwendung
+├── app.py                  # Flask-Hauptanwendung + Migrations-Threads
+├── task_manager.py         # Background-Task-Verwaltung (SSE)
 ├── templates/              # Jinja2-Templates
 │   ├── base.html          # Basis-Layout mit Navigation
 │   ├── login.html         # Microsoft-Login
@@ -76,7 +77,7 @@ web/
 │   └── overview_dashboard.html
 └── static/                 # Statische Assets
     ├── style.css          # CSS-Styling
-    └── main.js            # JavaScript-Utilities
+    └── main.js            # JavaScript-Utilities + SSEMigrationClient
 ```
 
 ### Authentifizierungs-Flow
@@ -99,12 +100,14 @@ web/
 | `/logout` | GET | Logout |
 | `/onenote` | GET | OneNote-Dashboard |
 | `/api/onenote/notebooks?site_url=...` | GET | Notebooks abrufen |
-| `/api/onenote/migrate` | POST | Migration starten |
+| `/api/onenote/migrate` | POST | OneNote-Migration starten (Background-Thread) |
 | `/planner` | GET | Planner-Dashboard |
-| `/api/planner/migrate` | POST | Migration starten |
+| `/api/planner/migrate` | POST | Planner-Migration starten (Background-Thread) |
 | `/overview` | GET | Overview-Dashboard |
 | `/api/overview/groups` | GET | Microsoft 365-Gruppen auflisten |
 | `/api/overview/groups/<id>/details` | GET | Notebooks + Plans einer Gruppe |
+| `/api/tasks/<id>/events` | GET | SSE-Stream für Live-Fortschritt |
+| `/api/tasks/<id>/status` | GET | Task-Status (Fallback für Reconnect) |
 
 ---
 
@@ -186,20 +189,19 @@ Die gleichen `core/ms_graph_client.py` und `core/notion_client.py` Module werden
 
 ### OneNote-Migration
 
-1. **SharePoint Site URL** eingeben
+1. **SharePoint Site URL** eingeben (wird von Overview vorausgefüllt)
 2. **Notebooks laden** (via API)
-3. **Notebooks auswählen** (Checkbox-Liste)
-4. **Notion-Ziel-Seiten-ID** eingeben
-5. **Migration starten**
-6. **Fortschritt beobachten** (Live-Updates)
+3. **Notebooks auswählen** (Checkbox-Liste, wird von Overview vorselektiert)
+4. **Notion-Datenbank-ID** eingeben
+5. **Migration starten** — läuft als Background-Thread
+6. **Live-Fortschritt beobachten** (SSE): Phase-Label, animierter Progressbar, Terminal-Log
 
 ### Planner-Migration
 
-1. **Planner Plan ID** eingeben
+1. **Planner Plan ID** eingeben (wird von Overview vorausgefüllt)
 2. **Notion-Datenbank-ID** eingeben
-3. (Optional) **Personen-Mapping CSV** hochladen
-4. **Migration starten**
-5. **Fortschritt beobachten** (Live-Updates)
+3. **Migration starten** — läuft als Background-Thread
+4. **Live-Fortschritt beobachten** (SSE): Phase-Label, animierter Progressbar, Terminal-Log, Summary am Ende
 
 ![Planner Migration Interface](Move2Notion_screen_planner.png)
 
@@ -429,8 +431,7 @@ from core.notion_client import NotionClient
 
 - **Single-User:** Keine Multi-User-Verwaltung
 - **In-Memory-Sessions:** Sessions gehen bei Server-Neustart verloren
-- **Synchrone Verarbeitung:** Lange Migrationen blockieren Request
-  - **Lösung für Produktion:** Celery/RQ für Background-Jobs
+- **In-Memory-Tasks:** Laufende Migrationen gehen bei Server-Neustart verloren
 
 ---
 
@@ -438,12 +439,11 @@ from core.notion_client import NotionClient
 
 Mögliche zukünftige Erweiterungen:
 
+- [x] Background-Migrationen mit Live-Fortschritt (SSE)
+- [x] OneNote Web-Migration vollständig implementiert
 - [ ] Multi-User-Support mit User-Management
 - [ ] Persistente Session-Storage (Redis)
-- [ ] Background-Workers (Celery/RQ)
-- [ ] WebSocket für Echtzeit-Updates
 - [ ] Migration-Historie und Logging-Dashboard
-- [ ] Automatische Token-Refresh-Benachrichtigungen
 - [ ] Export von Migrations-Berichten (PDF/CSV)
 
 ---
@@ -468,4 +468,4 @@ Bei Problemen oder Fragen:
 
 ---
 
-*Letzte Aktualisierung: Oktober 2025*
+*Letzte Aktualisierung: März 2026*

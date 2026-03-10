@@ -3,7 +3,10 @@ Flask Web-GUI für Microsoft-Notion Migration Tools.
 """
 import os
 import secrets
-from flask import Flask, render_template, session, redirect, url_for, request, jsonify
+import json
+import threading
+import queue
+from flask import Flask, render_template, session, redirect, url_for, request, jsonify, Response
 from dotenv import load_dotenv
 
 # Lade .env-Datei
@@ -13,6 +16,7 @@ load_dotenv()
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.auth import AuthManager, AuthConfig
+from web.task_manager import task_manager, TaskStatus, emit_progress, emit_complete
 
 # Flask-App initialisieren
 app = Flask(__name__)
@@ -111,18 +115,18 @@ def callback():
 
     code = request.args.get("code")
     error = request.args.get("error")
-    
+
     if error:
         return render_template("error.html", error=f"Authentication failed: {error}")
-    
+
     if not code:
         return redirect(url_for("login"))
-    
+
     # Session-ID abrufen
     session_id = session.get("session_id")
     if not session_id:
         return redirect(url_for("login"))
-    
+
     try:
         # Token erwerben
         web_auth_manager.microsoft.acquire_token_by_auth_code(code, session_id)
@@ -143,6 +147,62 @@ def logout():
     return redirect(url_for("login"))
 
 
+# ===== Task-SSE Routes =====
+
+@app.route("/api/tasks/<task_id>/events")
+def task_events(task_id):
+    """SSE-Endpoint: Streamt Progress-Events einer Migration."""
+    if "authenticated" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    task = task_manager.get_task(task_id)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+
+    def generate():
+        while True:
+            try:
+                event = task.event_queue.get(timeout=30)
+                yield f"data: {json.dumps(event)}\n\n"
+                if event.get("type") == "complete":
+                    break
+            except queue.Empty:
+                yield ": keepalive\n\n"
+
+    return Response(
+        generate(),
+        mimetype="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        }
+    )
+
+
+@app.route("/api/tasks/<task_id>/status")
+def task_status(task_id):
+    """Status-Fallback fuer Reconnect nach Browser-Navigation."""
+    if "authenticated" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    task = task_manager.get_task(task_id)
+    if not task:
+        return jsonify({"error": "Task not found"}), 404
+
+    return jsonify({
+        "task_id": task.task_id,
+        "task_type": task.task_type,
+        "status": task.status.value,
+        "progress": task.progress,
+        "phase": task.phase,
+        "message": task.message,
+        "success_count": task.success_count,
+        "error_count": task.error_count,
+        "total_items": task.total_items,
+    })
+
+
 # ===== OneNote-Migration Routes =====
 
 @app.route("/onenote")
@@ -158,24 +218,24 @@ def get_notebooks():
     """Liste aller OneNote-Notebooks abrufen."""
     if "authenticated" not in session:
         return jsonify({"error": "Not authenticated"}), 401
-    
+
     try:
         from core.ms_graph_client import MSGraphClient
-        
+
         # Site-URL aus Request-Parameter
         site_url = request.args.get("site_url")
         if not site_url:
             return jsonify({"error": "site_url parameter required"}), 400
-        
+
         # MS Graph Client erstellen
         client = MSGraphClient(web_auth_manager, session_id=session.get("session_id"))
-        
+
         # Site-ID auflösen
         site_id = client.resolve_site_id_from_url(site_url)
-        
+
         # Notebooks abrufen
         notebooks = client.list_site_notebooks(site_id)
-        
+
         return jsonify({
             "site_id": site_id,
             "notebooks": notebooks
@@ -186,17 +246,150 @@ def get_notebooks():
 
 @app.route("/api/onenote/migrate", methods=["POST"])
 def start_onenote_migration():
-    """OneNote-Migration starten."""
+    """OneNote-Migration als Background-Task starten."""
     if "authenticated" not in session:
         return jsonify({"error": "Not authenticated"}), 401
-    
-    # TODO: Implementierung der Migration in Background-Thread
+
     data = request.json
-    return jsonify({
-        "status": "started",
-        "message": "Migration wird gestartet...",
-        "data": data
-    })
+    site_id = data.get("site_id")
+    notebook_ids = data.get("notebook_ids", [])
+    database_id = data.get("database_id")
+
+    if not site_id:
+        return jsonify({"error": "site_id required"}), 400
+    if not notebook_ids:
+        return jsonify({"error": "notebook_ids required"}), 400
+    if not database_id:
+        return jsonify({"error": "database_id required"}), 400
+
+    # Session-ID vor Thread-Start erfassen (Flask Session ist request-local)
+    session_id = session.get("session_id")
+
+    task = task_manager.create_task("onenote")
+    thread = threading.Thread(
+        target=_run_onenote_migration,
+        args=(task, site_id, notebook_ids, database_id, session_id),
+        daemon=True
+    )
+    task.thread = thread
+    task.status = TaskStatus.RUNNING
+    thread.start()
+
+    return jsonify({"task_id": task.task_id, "status": "started"})
+
+
+def _run_onenote_migration(task, site_id, notebook_ids, database_id, session_id):
+    """OneNote-Migration im Background-Thread."""
+    try:
+        from core.ms_graph_client import MSGraphClient
+        from core.notion_client import NotionClient
+        from tools.onenote_migration.content_mapper import ContentMapper
+
+        ms_client = MSGraphClient(web_auth_manager, session_id=session_id)
+        notion_client = NotionClient()
+        content_mapper = ContentMapper(notion_client, ms_client, site_id)
+
+        # Phase 1: Notebooks laden
+        emit_progress(task, 2, "Lade Notebook-Informationen...", phase="Notebooks laden")
+        all_notebooks = ms_client.list_site_notebooks(site_id)
+        selected = [nb for nb in all_notebooks if nb.get("id") in notebook_ids]
+
+        if not selected:
+            emit_progress(task, 0, "Keine passenden Notebooks gefunden", log_type="error")
+            emit_complete(task, success=False)
+            return
+
+        emit_progress(task, 5, f"{len(selected)} Notebook(s) ausgewaehlt", log_type="success")
+
+        # Phase 2: Sections und Pages zaehlen
+        emit_progress(task, 6, "Lade Sections...", phase="Sections laden")
+        all_sections = []  # (notebook, section, pages)
+
+        for nb_idx, notebook in enumerate(selected):
+            nb_name = notebook.get("displayName", "Unbekannt")
+            try:
+                sections = ms_client.get_notebook_sections(site_id, notebook["id"])
+            except Exception as e:
+                emit_progress(task, 0, f"Sections fuer '{nb_name}' fehlgeschlagen: {e}", log_type="error")
+                sections = []
+
+            for section in sections:
+                sec_name = section.get("displayName", "Unbekannt")
+                try:
+                    pages = ms_client.list_pages_for_section(site_id, section["id"])
+                except Exception as e:
+                    emit_progress(task, 0, f"Seiten fuer '{sec_name}' fehlgeschlagen: {e}", log_type="error")
+                    pages = []
+                all_sections.append((notebook, section, pages))
+
+            progress = 6 + int((nb_idx + 1) / len(selected) * 9)
+            emit_progress(task, progress,
+                f"Notebook '{nb_name}': {len(sections)} Section(s)")
+
+        total_pages = sum(len(pages) for _, _, pages in all_sections)
+        task.total_items = total_pages
+        emit_progress(task, 15,
+            f"{total_pages} Seiten in {len(all_sections)} Section(s) gefunden",
+            log_type="success", phase="Seiten importieren")
+
+        if total_pages == 0:
+            emit_progress(task, 100, "Keine Seiten zum Importieren", log_type="warning")
+            emit_complete(task, success=True)
+            return
+
+        # Phase 3: Seiten importieren
+        processed = 0
+        for notebook, section, pages in all_sections:
+            nb_name = notebook.get("displayName", "")
+            sec_name = section.get("displayName", "")
+            sec_group = section.get("_groupName", "")
+
+            if pages:
+                label = f"{sec_group}/{sec_name}" if sec_group else sec_name
+                emit_progress(task, task.progress, f"Section: {label} ({len(pages)} Seiten)")
+
+            for page in pages:
+                page_title = page.get("title") or "Untitled"
+                try:
+                    notion_page_id = content_mapper.map_page_to_notion(
+                        onenote_page=page,
+                        database_id=database_id,
+                        section_name=sec_name,
+                        notebook_name=nb_name,
+                        section_group=sec_group
+                    )
+                    processed += 1
+                    progress = 15 + int(processed / total_pages * 80)
+
+                    if notion_page_id:
+                        task.success_count += 1
+                        emit_progress(task, progress,
+                            f"[{processed}/{total_pages}] Importiert: {page_title}",
+                            log_type="success")
+                    else:
+                        task.error_count += 1
+                        task.errors.append({"task": page_title, "error": "Import fehlgeschlagen"})
+                        emit_progress(task, progress,
+                            f"[{processed}/{total_pages}] Fehler: {page_title}",
+                            log_type="error")
+
+                except Exception as e:
+                    processed += 1
+                    task.error_count += 1
+                    task.errors.append({"task": page_title, "error": str(e)})
+                    progress = 15 + int(processed / total_pages * 80)
+                    emit_progress(task, progress,
+                        f"[{processed}/{total_pages}] Fehler bei '{page_title}': {e}",
+                        log_type="error")
+
+        # Abschluss
+        summary = f"Migration abgeschlossen: {task.success_count} importiert, {task.error_count} Fehler"
+        emit_progress(task, 98, summary, log_type="success", phase="Abgeschlossen")
+        emit_complete(task, success=task.error_count == 0 or task.success_count > 0)
+
+    except Exception as e:
+        emit_progress(task, task.progress, f"Fataler Fehler: {e}", log_type="error")
+        emit_complete(task, success=False)
 
 
 # ===== Planner-Migration Routes =====
@@ -211,130 +404,151 @@ def planner_dashboard():
 
 @app.route("/api/planner/migrate", methods=["POST"])
 def start_planner_migration():
-    """Planner-Migration starten."""
+    """Planner-Migration als Background-Task starten."""
     if "authenticated" not in session:
         return jsonify({"error": "Not authenticated"}), 401
-    
+
+    data = request.json
+    plan_id = data.get("plan_id")
+    database_id = data.get("database_id")
+
+    if not plan_id:
+        return jsonify({"error": "plan_id required"}), 400
+    if not database_id:
+        return jsonify({"error": "database_id required"}), 400
+
+    # Session-ID vor Thread-Start erfassen (Flask Session ist request-local)
+    session_id = session.get("session_id")
+
+    task = task_manager.create_task("planner")
+    thread = threading.Thread(
+        target=_run_planner_migration,
+        args=(task, plan_id, database_id, session_id),
+        daemon=True
+    )
+    task.thread = thread
+    task.status = TaskStatus.RUNNING
+    thread.start()
+
+    return jsonify({"task_id": task.task_id, "status": "started"})
+
+
+def _run_planner_migration(task, plan_id, database_id, session_id):
+    """Planner-Migration im Background-Thread."""
     try:
         from core.ms_graph_client import MSGraphClient
         from core.notion_client import NotionClient
         from tools.planner_migration.planner_api_mapper import create_planner_api_mapper
         from tools.planner_migration.notion_mapper import create_notion_mapper
-        
-        # Request-Daten abrufen
-        data = request.json
-        plan_id = data.get("plan_id")
-        database_id = data.get("database_id")
-        
-        if not plan_id:
-            return jsonify({"error": "plan_id required"}), 400
-        if not database_id:
-            return jsonify({"error": "database_id required"}), 400
-        
-        # MS Graph Client erstellen
-        ms_client = MSGraphClient(web_auth_manager, session_id=session.get("session_id"))
-        
+
+        ms_client = MSGraphClient(web_auth_manager, session_id=session_id)
+
         # 1. Plan-Details abrufen
+        emit_progress(task, 2, "Lade Plan-Details...", phase="Plan-Details laden")
         plan = ms_client.get_planner_plan(plan_id)
         plan_title = plan.get("title", "Unbekannter Plan")
-        group_id = plan.get("owner")  # Group ID für Mitglieder-Abruf
-        
-        # 1b. Plan-Details für Category-Descriptions abrufen
+        group_id = plan.get("owner")
+        emit_progress(task, 5, f"Plan: {plan_title}", log_type="success")
+
+        # 1b. Category-Descriptions
         try:
             plan_details = ms_client.get_planner_plan_details(plan_id)
             category_descriptions = plan_details.get("categoryDescriptions", {})
         except Exception:
             category_descriptions = {}
-        
+
         # 2. Buckets abrufen
+        emit_progress(task, 7, "Lade Buckets...", phase="Buckets laden")
         buckets = ms_client.list_planner_buckets(plan_id)
-        
+        emit_progress(task, 10, f"{len(buckets)} Buckets gefunden", log_type="success")
+
         # 3. Tasks abrufen
+        emit_progress(task, 12, "Lade Tasks...", phase="Tasks laden")
         tasks = ms_client.list_planner_tasks(plan_id)
-        
-        # 4. Task-Details abrufen (Beschreibung, Checklisten)
+        emit_progress(task, 15, f"{len(tasks)} Tasks gefunden", log_type="success")
+
+        # 4. Task-Details abrufen
+        emit_progress(task, 16, "Lade Task-Details...", phase="Task-Details laden")
         tasks_details = {}
-        for task in tasks:
-            task_id = task.get("id")
-            if task_id:
+        for i, t in enumerate(tasks):
+            t_id = t.get("id")
+            t_name = t.get("title", "Unbekannt")
+            if t_id:
                 try:
-                    details = ms_client.get_task_details(task_id)
-                    tasks_details[task_id] = details
-                except Exception as e:
-                    # Task-Details optional - bei Fehler einfach überspringen
+                    details = ms_client.get_task_details(t_id)
+                    tasks_details[t_id] = details
+                except Exception:
                     pass
-        
-        # 5. Gruppenmitglieder abrufen (für Personen-Zuordnung)
+            progress = 16 + int((i + 1) / max(len(tasks), 1) * 24)
+            emit_progress(task, progress, f"[{i+1}/{len(tasks)}] Details fuer '{t_name}'")
+
+        emit_progress(task, 40, f"Details fuer {len(tasks_details)} Tasks geladen", log_type="success")
+
+        # 5. Gruppenmitglieder abrufen
+        emit_progress(task, 42, "Lade Gruppenmitglieder...", phase="Gruppenmitglieder")
         group_members = []
         if group_id:
             try:
                 group_members = ms_client.get_group_members(group_id)
-            except Exception as e:
-                # Gruppenmitglieder optional
+            except Exception:
                 pass
-        
-        # 6. API-Mapper erstellen und Daten konvertieren
+        emit_progress(task, 45, f"{len(group_members)} Mitglieder gefunden", log_type="success")
+
+        # 6. Daten konvertieren
+        emit_progress(task, 47, "Konvertiere Daten...", phase="Daten konvertieren")
         api_mapper = create_planner_api_mapper()
         api_mapper.set_buckets(buckets)
         api_mapper.set_users(group_members)
-        
-        # Category-Descriptions (Tags) setzen
         api_mapper.set_category_descriptions(category_descriptions)
-        
-        # Tasks zu Row-Format konvertieren
         rows = api_mapper.map_tasks_to_rows(tasks, tasks_details)
-        
+
         if not rows:
-            return jsonify({
-                "status": "error",
-                "message": "Keine Tasks im Plan gefunden"
-            }), 400
-        
+            emit_progress(task, 0, "Keine Tasks im Plan gefunden", log_type="error")
+            emit_complete(task, success=False)
+            return
+
+        task.total_items = len(rows)
+        emit_progress(task, 55, f"{len(rows)} Tasks konvertiert", log_type="success")
+
         # 7. Notion-Client und Mapper erstellen
+        emit_progress(task, 57, "Bereite Datenbank vor...", phase="DB vorbereiten")
         notion_client = NotionClient()
         notion_mapper = create_notion_mapper(notion_client)
-        
-        # 8. Datenbank vorbereiten (Properties und Optionen)
+
+        # 8. Datenbank vorbereiten
         notion_mapper.prepare_database_for_import(database_id, rows)
-        
-        # 9. Daten in Notion importieren
-        success_count = 0
-        error_count = 0
-        errors = []
-        
-        for row in rows:
+        emit_progress(task, 60, "Datenbank vorbereitet", log_type="success")
+
+        # 9. Daten importieren
+        emit_progress(task, 60, f"Importiere {len(rows)} Eintraege...", phase="Import")
+
+        for i, row in enumerate(rows):
+            row_name = row.get("Name", "Unbekannt")
             try:
-                # Properties und Blöcke erstellen
                 properties = notion_mapper.build_properties_for_row(row, None)
                 children = notion_mapper.build_children_blocks(row)
-                
-                # Seite erstellen
                 notion_client.create_page(database_id, properties, children)
-                success_count += 1
-                
+                task.success_count += 1
+                progress = 60 + int((i + 1) / len(rows) * 38)
+                emit_progress(task, progress,
+                    f"[{i+1}/{len(rows)}] Erstellt: {row_name}",
+                    log_type="success")
             except Exception as e:
-                error_count += 1
-                errors.append({
-                    "task": row.get("Name", "Unbekannt"),
-                    "error": str(e)
-                })
-        
-        # 10. Ergebnis zurückgeben
-        return jsonify({
-            "status": "completed",
-            "message": f"Migration abgeschlossen: {success_count} erfolgreich, {error_count} Fehler",
-            "plan_title": plan_title,
-            "total_tasks": len(rows),
-            "success_count": success_count,
-            "error_count": error_count,
-            "errors": errors[:10] if errors else []  # Max. 10 Fehler anzeigen
-        })
-        
+                task.error_count += 1
+                task.errors.append({"task": row_name, "error": str(e)})
+                progress = 60 + int((i + 1) / len(rows) * 38)
+                emit_progress(task, progress,
+                    f"[{i+1}/{len(rows)}] Fehler bei '{row_name}': {e}",
+                    log_type="error")
+
+        # 10. Abschluss
+        summary = f"Migration abgeschlossen: {task.success_count} erstellt, {task.error_count} Fehler"
+        emit_progress(task, 98, summary, log_type="success", phase="Abgeschlossen")
+        emit_complete(task, success=task.error_count == 0 or task.success_count > 0)
+
     except Exception as e:
-        return jsonify({
-            "status": "error",
-            "message": f"Migration fehlgeschlagen: {str(e)}"
-        }), 500
+        emit_progress(task, task.progress, f"Fataler Fehler: {e}", log_type="error")
+        emit_complete(task, success=False)
 
 
 # ===== Overview Routes =====

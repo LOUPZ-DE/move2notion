@@ -5,6 +5,28 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/)
 und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.9.2] - 2026-03-10
+
+### Hinzugefügt
+- **Live-Migrations-Fortschritt (SSE)**: Planner- und OneNote-Migrationen laufen als Background-Thread mit Echtzeit-Fortschrittsanzeige via Server-Sent Events
+  - Animierter Progressbar mit Streifen-Animation während der Migration
+  - Phase-Label zeigt aktuelle Phase (z.B. "Tasks laden", "Import", "Abgeschlossen")
+  - Terminal-artiges Live-Log mit farbcodierten Einträgen
+  - Summary-Box am Ende mit Erfolg/Fehler-Zähler und Fehler-Details
+- **OneNote Web-Migration implementiert**: Vollständige OneNote-Migration über die Web-GUI (war zuvor nur ein Stub)
+  - Nutzt bestehende `ContentMapper`-Klasse direkt
+  - Notebooks → Sections → Pages mit Fortschritt pro Seite
+- Neues Modul `web/task_manager.py`: Task-Infrastruktur mit `MigrationTask`, `TaskManager` und thread-safe Event-Queue
+- SSE-Endpoint `GET /api/tasks/<id>/events` für Progress-Streaming
+- Status-Fallback `GET /api/tasks/<id>/status` für Reconnect nach Browser-Navigation
+- `SSEMigrationClient` JavaScript-Klasse für EventSource-basierte Fortschrittsanzeige
+
+### Verbessert
+- Planner-Migration läuft nun asynchron im Background-Thread (kein HTTP-Timeout mehr bei großen Plänen)
+- Progress-Bar mit CSS-Streifen-Animation, stoppt bei 100% mit solidem Grün
+- Disabled-State für Submit-Buttons während laufender Migration
+- **Notion-ID-Eingabe**: Akzeptiert nun auch vollständige Notion-Share-URLs — die Datenbank-ID wird automatisch extrahiert (on paste/blur)
+
 ## [0.9.1] - 2026-03-10
 
 ### Hinzugefügt
