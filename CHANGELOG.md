@@ -5,6 +5,37 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/)
 und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.9.1] - 2026-03-10
+
+### Hinzugefügt
+- **Overview → Migration Verknüpfung**: "Migrieren →" Buttons bei Planner-Plänen und OneNote-Notebooks
+  - Planner: Plan-ID wird im Planner-Dashboard vorausgefüllt
+  - OneNote: SharePoint-Site-URL und Notebook-Name werden vorausgefüllt, Notebook automatisch vorselektiert
+- **"Alle Details laden"** Button im Overview für Batch-Abruf aller Gruppen mit Fortschrittsanzeige
+- **Session-Persistenz**: Overview-State (Gruppen + Details) überlebt Seitenwechsel via sessionStorage
+- **Zusammenfassung**: Anzeige "X mit Zugriff, Y ohne Zugriff" nach Batch-Load
+- MS Graph Client: Neue Methode `get_group_site_url()` für SharePoint-URL-Auflösung
+- Dokumentation: PowerShell-Skript zur Gruppenmitgliedschaft für Delegated-Modus
+
+### Verbessert
+- 403-Fehler im Overview werden als dezenter Hinweis statt rotem Fehler dargestellt
+- Gruppen ohne Zugriff visuell abgesetzt (halbtransparent)
+- Web-GUI: `MSGraphClient` unterstützt jetzt korrekt den Delegated Web-Modus (session_id)
+
+### Behoben
+- `Tasks.Read.All` aus Delegated-Scopes entfernt (nur als Application Permission verfügbar, verursachte `AADSTS650053`)
+- `MicrosoftWebAuthenticator` hat kein `.headers`-Property — `MSGraphClient` nutzt jetzt `_get_headers()` mit Session-Fallback
+
+## [0.9.0] - 2026-03-10
+
+### Hinzugefügt
+- **Overview-Tool**: Neues CLI-Tool und Web-Dashboard zur Auflistung aller Microsoft 365-Gruppen mit OneNote-Notebooks und Planner-Plänen
+  - CLI: `python -m tools.overview.cli` mit `--verbose`, `--groups-only`, `--json` Optionen
+  - Web: Neues `/overview`-Dashboard mit Lazy-Loading der Gruppen-Details
+  - API: `GET /api/overview/groups` und `GET /api/overview/groups/<id>/details`
+- MS Graph Client: Drei neue Methoden (`list_groups`, `list_group_planner_plans`, `list_group_notebooks`)
+- Overview-Card auf dem Web-Dashboard und Navbar-Link
+
 ## [0.8.5] - 2026-03-10
 
 ### Hinzugefügt

@@ -64,6 +64,24 @@ document.addEventListener('DOMContentLoaded', function() {
     let siteId = null;
     let selectedNotebooks = [];
 
+    // Parameter aus URL (von Overview)
+    var urlParams = new URLSearchParams(window.location.search);
+    var prefillNotebook = urlParams.get('notebook');
+    var prefillSiteUrl = urlParams.get('site_url');
+
+    if (prefillSiteUrl) {
+        document.getElementById('site_url').value = prefillSiteUrl;
+    }
+    if (prefillNotebook) {
+        var hint = 'Notebook aus Overview: "' + prefillNotebook + '"';
+        if (prefillSiteUrl) {
+            hint += ' — Site-URL wurde vorausgefuellt. Klicke "Notebooks laden".';
+        } else {
+            hint += ' — Bitte die zugehoerige SharePoint-Site-URL eingeben.';
+        }
+        document.querySelector('#site-form .form-group small').textContent = hint;
+    }
+
     // Site-URL validieren und Notebooks laden
     siteForm.addEventListener('submit', async function(e) {
         e.preventDefault();
@@ -101,13 +119,20 @@ document.addEventListener('DOMContentLoaded', function() {
             `;
             list.appendChild(card);
             
-            card.querySelector('input').addEventListener('change', function(e) {
+            var checkbox = card.querySelector('input');
+            checkbox.addEventListener('change', function(e) {
                 if (e.target.checked) {
                     selectedNotebooks.push(nb.id);
                 } else {
                     selectedNotebooks = selectedNotebooks.filter(id => id !== nb.id);
                 }
             });
+
+            // Notebook automatisch vorselektieren wenn von Overview kommend
+            if (prefillNotebook && nb.displayName === prefillNotebook) {
+                checkbox.checked = true;
+                selectedNotebooks.push(nb.id);
+            }
         });
     }
 

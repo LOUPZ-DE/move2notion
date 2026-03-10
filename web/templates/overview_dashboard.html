@@ -1,0 +1,319 @@
+{% extends "base.html" %}
+
+{% block title %}Overview - MS &rarr; Notion Migration{% endblock %}
+
+{% block content %}
+<div class="migration-dashboard">
+    <h2>Microsoft 365 Overview</h2>
+    <p class="subtitle">Alle Teams-Gruppen mit Notebooks und Planner-Pl&auml;nen</p>
+
+    <div class="form-section">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h3>Gruppen</h3>
+            <div style="display: flex; gap: 8px;">
+                <button id="load-all-details-btn" class="btn btn-secondary hidden">Alle Details laden</button>
+                <button id="load-groups-btn" class="btn btn-primary">Gruppen laden</button>
+            </div>
+        </div>
+        <p id="groups-status" class="status-text" style="text-align: left; margin-top: 12px;">
+            Klicke &quot;Gruppen laden&quot; um alle Microsoft 365-Gruppen aufzulisten.
+        </p>
+    </div>
+
+    <div id="groups-list" class="hidden">
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var loadBtn = document.getElementById('load-groups-btn');
+    var loadAllBtn = document.getElementById('load-all-details-btn');
+    var groupsList = document.getElementById('groups-list');
+    var groupsStatus = document.getElementById('groups-status');
+    var appMode = false;
+    var currentGroups = [];
+
+    var STORAGE_KEY = 'overview_state';
+
+    // State aus sessionStorage wiederherstellen
+    restoreState();
+
+    loadBtn.addEventListener('click', async function() {
+        loadBtn.disabled = true;
+        loadBtn.textContent = 'Lade...';
+        groupsStatus.textContent = 'Gruppen werden geladen...';
+
+        try {
+            var response = await fetch('/api/overview/groups');
+            var data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Unbekannter Fehler');
+            }
+
+            appMode = (data.auth_mode === 'application');
+            currentGroups = data.groups;
+            renderGroups(currentGroups);
+
+            // State speichern
+            saveState({ appMode: appMode, groups: currentGroups, details: {} });
+
+        } catch (error) {
+            groupsStatus.textContent = 'Fehler: ' + error.message;
+        } finally {
+            loadBtn.disabled = false;
+            loadBtn.textContent = 'Gruppen laden';
+        }
+    });
+
+    // Alle Details auf einmal laden
+    loadAllBtn.addEventListener('click', async function() {
+        loadAllBtn.disabled = true;
+        loadAllBtn.textContent = 'Lade alle...';
+
+        var total = currentGroups.length;
+        var loaded = 0;
+
+        for (var i = 0; i < currentGroups.length; i++) {
+            var groupId = currentGroups[i].id;
+            var btn = groupsList.querySelector('[data-group-id="' + groupId + '"]');
+
+            // Bereits geladene ueberspringen
+            if (btn && btn.textContent === 'Geladen') {
+                loaded++;
+                continue;
+            }
+
+            if (btn) {
+                await loadGroupDetails(groupId, btn);
+            }
+
+            loaded++;
+            loadAllBtn.textContent = 'Lade... (' + loaded + '/' + total + ')';
+        }
+
+        loadAllBtn.textContent = 'Alle geladen';
+        updateSummary();
+    });
+
+    function renderGroups(groups) {
+        var statusText = groups.length + ' Gruppen gefunden.';
+        if (appMode) {
+            statusText += ' (Application-Modus: OneNote nicht verfuegbar)';
+        }
+        groupsStatus.textContent = statusText;
+        groupsList.classList.remove('hidden');
+        groupsList.innerHTML = '';
+
+        groups.forEach(function(group) {
+            var card = createGroupCard(group);
+            groupsList.appendChild(card);
+        });
+
+        // "Alle Details laden" Button anzeigen
+        loadAllBtn.classList.remove('hidden');
+    }
+
+    function createGroupCard(group) {
+        var card = document.createElement('div');
+        card.className = 'form-section overview-group-card';
+        card.setAttribute('data-card-id', group.id);
+        card.innerHTML =
+            '<div class="overview-group-header">' +
+                '<div>' +
+                    '<h3>' + escapeHtml(group.displayName) + '</h3>' +
+                    (group.mail ? '<small>' + escapeHtml(group.mail) + '</small>' : '') +
+                    (group.description ? '<p class="overview-group-desc">' + escapeHtml(group.description) + '</p>' : '') +
+                '</div>' +
+                '<button class="btn btn-secondary btn-load-details" data-group-id="' + group.id + '">Details laden</button>' +
+            '</div>' +
+            '<div class="overview-details hidden" id="details-' + group.id + '">' +
+                '<div class="overview-columns">' +
+                    '<div class="overview-col">' +
+                        '<h4>OneNote Notebooks</h4>' +
+                        '<div class="overview-items" id="notebooks-' + group.id + '">-</div>' +
+                    '</div>' +
+                    '<div class="overview-col">' +
+                        '<h4>Planner-Pl\u00e4ne</h4>' +
+                        '<div class="overview-items" id="plans-' + group.id + '">-</div>' +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+
+        var detailsBtn = card.querySelector('.btn-load-details');
+        detailsBtn.addEventListener('click', function() {
+            loadGroupDetails(group.id, detailsBtn);
+        });
+
+        return card;
+    }
+
+    async function loadGroupDetails(groupId, btn) {
+        btn.disabled = true;
+        btn.textContent = 'Lade...';
+
+        try {
+            var response = await fetch('/api/overview/groups/' + groupId + '/details');
+            var data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Unbekannter Fehler');
+            }
+
+            renderGroupDetails(groupId, data);
+            btn.textContent = 'Geladen';
+
+            // Karte visuell markieren wenn kein Zugriff
+            var hasAccess = !data.notebooks_error && !data.plans_error;
+            var card = groupsList.querySelector('[data-card-id="' + groupId + '"]');
+            if (card && !hasAccess && data.plans_error) {
+                card.classList.add('overview-noaccess');
+            }
+
+            // Details im State speichern
+            var state = loadState();
+            if (state) {
+                state.details[groupId] = data;
+                saveState(state);
+            }
+
+        } catch (error) {
+            var detailsDiv = document.getElementById('details-' + groupId);
+            var notebooksDiv = document.getElementById('notebooks-' + groupId);
+            var plansDiv = document.getElementById('plans-' + groupId);
+            detailsDiv.classList.remove('hidden');
+            notebooksDiv.innerHTML = '<span class="overview-noaccess-text">' + escapeHtml(error.message) + '</span>';
+            plansDiv.innerHTML = '';
+            btn.textContent = 'Fehler';
+        }
+    }
+
+    function renderGroupDetails(groupId, data) {
+        var detailsDiv = document.getElementById('details-' + groupId);
+        var notebooksDiv = document.getElementById('notebooks-' + groupId);
+        var plansDiv = document.getElementById('plans-' + groupId);
+
+        detailsDiv.classList.remove('hidden');
+
+        // Notebooks
+        if (appMode) {
+            notebooksDiv.innerHTML = '<span class="overview-noaccess-text">Im Application-Modus nicht verfuegbar</span>';
+        } else if (data.notebooks_error) {
+            notebooksDiv.innerHTML = '<span class="overview-noaccess-text">' + escapeHtml(data.notebooks_error) + '</span>';
+        } else if (data.notebooks.length === 0) {
+            notebooksDiv.innerHTML = '<span class="overview-empty">Keine Notebooks</span>';
+        } else {
+            var siteParam = data.site_url ? '&site_url=' + encodeURIComponent(data.site_url) : '';
+            notebooksDiv.innerHTML = data.notebooks.map(function(nb) {
+                return '<div class="overview-item">' +
+                    '<div class="overview-item-info">' +
+                        '<strong>' + escapeHtml(nb.displayName) + '</strong>' +
+                        '<code class="overview-id">' + nb.id + '</code>' +
+                    '</div>' +
+                    '<a href="/onenote?notebook=' + encodeURIComponent(nb.displayName) + siteParam + '" class="btn btn-sm btn-action" title="Zur OneNote-Migration">Migrieren &rarr;</a>' +
+                '</div>';
+            }).join('');
+        }
+
+        // Plans
+        if (data.plans_error) {
+            plansDiv.innerHTML = '<span class="overview-noaccess-text">' + escapeHtml(data.plans_error) + '</span>';
+        } else if (data.plans.length === 0) {
+            plansDiv.innerHTML = '<span class="overview-empty">Keine Pl\u00e4ne</span>';
+        } else {
+            plansDiv.innerHTML = data.plans.map(function(p) {
+                return '<div class="overview-item">' +
+                    '<div class="overview-item-info">' +
+                        '<strong>' + escapeHtml(p.title) + '</strong>' +
+                        '<code class="overview-id">' + p.id + '</code>' +
+                    '</div>' +
+                    '<a href="/planner?plan_id=' + encodeURIComponent(p.id) + '" class="btn btn-sm btn-action" title="Zur Planner-Migration">Migrieren &rarr;</a>' +
+                '</div>';
+            }).join('');
+        }
+    }
+
+    function updateSummary() {
+        var cards = groupsList.querySelectorAll('.overview-group-card');
+        var accessible = 0;
+        var noAccess = 0;
+
+        cards.forEach(function(card) {
+            if (card.classList.contains('overview-noaccess')) {
+                noAccess++;
+            } else {
+                var btn = card.querySelector('.btn-load-details');
+                if (btn && btn.textContent === 'Geladen') {
+                    accessible++;
+                }
+            }
+        });
+
+        if (accessible > 0 || noAccess > 0) {
+            var modeHint = appMode
+                ? ' (Application-Modus: OneNote nicht verfuegbar)'
+                : ' (Delegated-Modus: nur eigene Gruppen)';
+            groupsStatus.textContent = currentGroups.length + ' Gruppen | '
+                + accessible + ' mit Zugriff, '
+                + noAccess + ' ohne Zugriff'
+                + modeHint;
+        }
+    }
+
+    // === sessionStorage ===
+
+    function saveState(state) {
+        try {
+            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (e) { /* quota exceeded - ignore */ }
+    }
+
+    function loadState() {
+        try {
+            var raw = sessionStorage.getItem(STORAGE_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) { return null; }
+    }
+
+    function restoreState() {
+        var state = loadState();
+        if (!state || !state.groups) return;
+
+        appMode = state.appMode || false;
+        currentGroups = state.groups;
+        renderGroups(currentGroups);
+
+        // Bereits geladene Details wiederherstellen
+        var detailKeys = Object.keys(state.details || {});
+        detailKeys.forEach(function(groupId) {
+            var btn = groupsList.querySelector('[data-group-id="' + groupId + '"]');
+            if (btn) {
+                btn.textContent = 'Geladen';
+                btn.disabled = false;
+            }
+            renderGroupDetails(groupId, state.details[groupId]);
+
+            // Karte markieren
+            var data = state.details[groupId];
+            if (data && data.plans_error) {
+                var card = groupsList.querySelector('[data-card-id="' + groupId + '"]');
+                if (card) card.classList.add('overview-noaccess');
+            }
+        });
+
+        if (detailKeys.length > 0) {
+            updateSummary();
+            loadAllBtn.textContent = 'Alle geladen';
+        }
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text || '';
+        return div.innerHTML;
+    }
+});
+</script>
+{% endblock %}

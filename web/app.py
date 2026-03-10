@@ -27,6 +27,15 @@ def is_application_mode() -> bool:
     return os.getenv("MS_AUTH_MODE", "delegated").lower().strip() == "application"
 
 
+def _friendly_graph_error(error_msg: str) -> str:
+    """Graph-API-Fehler in benutzerfreundliche Meldung umwandeln."""
+    if "403" in error_msg:
+        return "Kein Zugriff (kein Mitglied dieser Gruppe)"
+    if "404" in error_msg:
+        return "Nicht gefunden"
+    return error_msg
+
+
 def verify_admin_password(password: str) -> bool:
     """Admin-Passwort prüfen."""
     admin_pw = os.getenv("ADMIN_PASSWORD", "")
@@ -159,7 +168,7 @@ def get_notebooks():
             return jsonify({"error": "site_url parameter required"}), 400
         
         # MS Graph Client erstellen
-        client = MSGraphClient(web_auth_manager)
+        client = MSGraphClient(web_auth_manager, session_id=session.get("session_id"))
         
         # Site-ID auflösen
         site_id = client.resolve_site_id_from_url(site_url)
@@ -223,7 +232,7 @@ def start_planner_migration():
             return jsonify({"error": "database_id required"}), 400
         
         # MS Graph Client erstellen
-        ms_client = MSGraphClient(web_auth_manager)
+        ms_client = MSGraphClient(web_auth_manager, session_id=session.get("session_id"))
         
         # 1. Plan-Details abrufen
         plan = ms_client.get_planner_plan(plan_id)
@@ -326,6 +335,97 @@ def start_planner_migration():
             "status": "error",
             "message": f"Migration fehlgeschlagen: {str(e)}"
         }), 500
+
+
+# ===== Overview Routes =====
+
+@app.route("/overview")
+def overview_dashboard():
+    """Overview Dashboard: Microsoft 365-Gruppen anzeigen."""
+    if "authenticated" not in session:
+        return redirect(url_for("login"))
+    return render_template("overview_dashboard.html")
+
+
+@app.route("/api/overview/groups", methods=["GET"])
+def get_overview_groups():
+    """Liste aller Microsoft 365-Gruppen abrufen."""
+    if "authenticated" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    try:
+        from core.ms_graph_client import MSGraphClient
+        client = MSGraphClient(web_auth_manager, session_id=session.get("session_id"))
+        groups = client.list_groups()
+
+        return jsonify({
+            "auth_mode": "application" if is_application_mode() else "delegated",
+            "groups": [
+                {
+                    "id": g.get("id", ""),
+                    "displayName": g.get("displayName", ""),
+                    "description": g.get("description", ""),
+                    "mail": g.get("mail", ""),
+                }
+                for g in groups
+            ]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/overview/groups/<group_id>/details", methods=["GET"])
+def get_group_details(group_id):
+    """Notebooks und Planner-Pläne einer Gruppe abrufen."""
+    if "authenticated" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    try:
+        from core.ms_graph_client import MSGraphClient
+        client = MSGraphClient(web_auth_manager, session_id=session.get("session_id"))
+
+        notebooks = []
+        notebooks_error = None
+        if is_application_mode():
+            notebooks_error = "Nicht verfuegbar im Application-Modus (Delegated Auth erforderlich)"
+        else:
+            try:
+                raw_notebooks = client.list_group_notebooks(group_id)
+                notebooks = [
+                    {"id": nb.get("id", ""), "displayName": nb.get("displayName", "")}
+                    for nb in raw_notebooks
+                ]
+            except Exception as e:
+                notebooks_error = _friendly_graph_error(str(e))
+
+        # SharePoint-Site-URL der Gruppe abrufen
+        site_url = None
+        try:
+            site_url = client.get_group_site_url(group_id)
+        except Exception:
+            pass
+
+        plans = []
+        plans_error = None
+        try:
+            raw_plans = client.list_group_planner_plans(group_id)
+            plans = [
+                {"id": p.get("id", ""), "title": p.get("title", "")}
+                for p in raw_plans
+            ]
+        except Exception as e:
+            plans_error = _friendly_graph_error(str(e))
+
+        return jsonify({
+            "group_id": group_id,
+            "site_url": site_url,
+            "notebooks": notebooks,
+            "notebooks_error": notebooks_error,
+            "plans": plans,
+            "plans_error": plans_error,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 # ===== Fehlerbehandlung =====

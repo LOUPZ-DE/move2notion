@@ -13,6 +13,7 @@ Die Web-GUI bietet eine benutzerfreundliche grafische Oberfläche für alle Migr
 - 🔐 **Microsoft OAuth-Authentifizierung** (Authorization Code Flow)
 - 📓 **OneNote-Migration** mit grafischer Notebook-Auswahl
 - 📋 **Planner-Migration** mit interaktiven Formularen
+- 🔍 **Overview-Dashboard** zur Auflistung aller Teams-Gruppen, Notebooks und Planner-Pläne
 - 📊 **Live-Fortschrittsanzeige** während der Migration
 - 🎨 **Responsive Design** für Desktop und Mobile
 - ⚡ **Automatischer Token-Refresh** (MS Graph Tokens sind ~60-75 Min. gültig)
@@ -71,7 +72,8 @@ web/
 │   ├── dashboard.html     # Hauptseite
 │   ├── error.html         # Fehlerseite
 │   ├── onenote_dashboard.html
-│   └── planner_dashboard.html
+│   ├── planner_dashboard.html
+│   └── overview_dashboard.html
 └── static/                 # Statische Assets
     ├── style.css          # CSS-Styling
     └── main.js            # JavaScript-Utilities
@@ -100,6 +102,9 @@ web/
 | `/api/onenote/migrate` | POST | Migration starten |
 | `/planner` | GET | Planner-Dashboard |
 | `/api/planner/migrate` | POST | Migration starten |
+| `/overview` | GET | Overview-Dashboard |
+| `/api/overview/groups` | GET | Microsoft 365-Gruppen auflisten |
+| `/api/overview/groups/<id>/details` | GET | Notebooks + Plans einer Gruppe |
 
 ---
 
@@ -197,6 +202,14 @@ Die gleichen `core/ms_graph_client.py` und `core/notion_client.py` Module werden
 5. **Fortschritt beobachten** (Live-Updates)
 
 ![Planner Migration Interface](Move2Notion_screen_planner.png)
+
+### Overview-Dashboard
+
+1. **"Gruppen laden"** klicken — listet alle Microsoft 365-Gruppen im Tenant
+2. **"Details laden"** pro Gruppe — ruft OneNote-Notebooks und Planner-Pläne ab
+3. **IDs kopieren** — Notebook- und Plan-IDs können direkt für die Migration verwendet werden
+
+Das Overview-Dashboard nutzt Lazy-Loading: Gruppen werden zuerst geladen, Details pro Gruppe werden erst auf Klick abgerufen. Dies ermöglicht eine schnelle Übersicht auch bei großen Tenants.
 
 ---
 

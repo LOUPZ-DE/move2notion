@@ -106,6 +106,18 @@ https://graph.microsoft.com/.default
 
 Die in `MS_GRAPH_SCOPES` konfigurierten Scopes werden im Application-Modus **ignoriert**. Stattdessen gelten alle in Azure AD erteilten Application Permissions.
 
+### OneNote-API-Einschränkung (seit März 2025)
+
+Microsoft unterstützt seit dem 31. März 2025 **keine App-Only-Tokens mehr für OneNote-APIs**. Das bedeutet:
+
+- **OneNote-Migration** (`tools/onenote_migration/`) funktioniert im Application-Modus **nicht**
+- **Overview-Tool**: OneNote-Notebooks werden im Application-Modus übersprungen (nur Planner-Pläne werden angezeigt)
+- **Planner-Migration** (`tools/planner_migration/`) funktioniert weiterhin uneingeschränkt
+
+**Lösung:** Für OneNote-bezogene Funktionen den Delegated-Modus verwenden (`MS_AUTH_MODE=delegated`).
+
+Referenz: [Microsoft Graph OneNote API — App-Only Token Deprecation](https://learn.microsoft.com/en-us/graph/auth-v2-user)
+
 ### Token-Caching
 
 MSAL cached Client Credentials Tokens automatisch (ca. 1 Stunde gültig). Es wird kein lokaler Token-Cache benötigt.
@@ -130,4 +142,33 @@ Client Credentials Flow erfordert eine **spezifische Tenant-ID**. Die Werte `com
 
 ---
 
-*Siehe auch: [Web-GUI Dokumentation](WEB_GUI.md) | [Hauptdokumentation](../README.md)*
+## Delegated-Modus: Gruppenmitgliedschaft
+
+Im Delegated-Modus (`MS_AUTH_MODE=delegated`) sieht der angemeldete Benutzer nur Planner-Pläne und OneNote-Notebooks von Gruppen, in denen er **Mitglied** ist — auch wenn er Global Admin ist.
+
+Um im Delegated-Modus alle Gruppen vollständig zu sehen, muss der Benutzer allen Microsoft 365-Gruppen als Mitglied hinzugefügt werden:
+
+```powershell
+# Voraussetzung: Install-Module Microsoft.Graph -Scope CurrentUser
+Connect-MgGraph -Scopes "GroupMember.ReadWrite.All", "User.Read.All", "Group.Read.All"
+
+$user = Get-MgUser -Filter "userPrincipalName eq 'it-admin@example.com'"
+$groups = Get-MgGroup -Filter "groupTypes/any(c:c eq 'Unified')" -All
+
+foreach ($group in $groups) {
+    try {
+        New-MgGroupMember -GroupId $group.Id -DirectoryObjectId $user.Id -ErrorAction Stop
+        Write-Host "[+] $($group.DisplayName)"
+    } catch {
+        if ($_.Exception.Message -like '*already exist*') {
+            Write-Host "[=] $($group.DisplayName) (bereits Mitglied)"
+        }
+    }
+}
+```
+
+> Nach dem Hinzufügen kann es einige Minuten dauern, bis die Berechtigungen wirksam werden.
+
+---
+
+*Siehe auch: [Web-GUI Dokumentation](WEB_GUI.md) | [Overview Dokumentation](OVERVIEW.md) | [Hauptdokumentation](../README.md)*

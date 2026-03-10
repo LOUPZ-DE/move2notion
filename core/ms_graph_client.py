@@ -17,19 +17,28 @@ class MSGraphClient:
 
     BASE_URL = "https://graph.microsoft.com/v1.0"
 
-    def __init__(self, auth_manager_instance=None):
+    def __init__(self, auth_manager_instance=None, session_id: str = None):
         self.auth = auth_manager_instance or auth_manager
+        self._session_id = session_id
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Auth-Headers abrufen (CLI/Application: .headers, Web: get_headers(session_id))."""
+        ms = self.auth.microsoft
+        if self._session_id and hasattr(ms, 'get_headers'):
+            return ms.get_headers(self._session_id)
+        return ms.headers
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """Generische HTTP-Anfrage an Microsoft Graph API."""
         url = f"{self.BASE_URL}{endpoint}"
+        headers = self._get_headers()
 
         if method.lower() == "get":
-            response = requests.get(url, headers=self.auth.microsoft.headers, **kwargs)
+            response = requests.get(url, headers=headers, **kwargs)
         elif method.lower() == "post":
-            response = requests.post(url, headers=self.auth.microsoft.headers, **kwargs)
+            response = requests.post(url, headers=headers, **kwargs)
         elif method.lower() == "patch":
-            response = requests.patch(url, headers=self.auth.microsoft.headers, **kwargs)
+            response = requests.patch(url, headers=headers, **kwargs)
         else:
             raise ValueError(f"Unsupported HTTP method: {method}")
 
@@ -318,6 +327,64 @@ class MSGraphClient:
 
         return members
     
+    # ===== Overview/Discovery-Methoden =====
+
+    def list_groups(self) -> List[Dict[str, Any]]:
+        """Microsoft 365-Gruppen (Teams) auflisten."""
+        groups = []
+        endpoint = "/groups?$filter=groupTypes/any(c:c eq 'Unified')&$select=id,displayName,description,mail&$top=100"
+
+        while endpoint:
+            result = self._make_request("GET", endpoint)
+            groups.extend(result.get("value", []))
+
+            next_link = result.get("@odata.nextLink")
+            if next_link:
+                endpoint = next_link.replace(self.BASE_URL, "")
+            else:
+                endpoint = None
+
+        return groups
+
+    def list_group_planner_plans(self, group_id: str) -> List[Dict[str, Any]]:
+        """Planner-Pläne einer Gruppe auflisten."""
+        plans = []
+        endpoint = f"/groups/{group_id}/planner/plans"
+
+        while endpoint:
+            result = self._make_request("GET", endpoint)
+            plans.extend(result.get("value", []))
+
+            next_link = result.get("@odata.nextLink")
+            if next_link:
+                endpoint = next_link.replace(self.BASE_URL, "")
+            else:
+                endpoint = None
+
+        return plans
+
+    def get_group_site_url(self, group_id: str) -> Optional[str]:
+        """SharePoint-Site-URL einer Gruppe abrufen."""
+        result = self._make_request("GET", f"/groups/{group_id}/sites/root?$select=webUrl")
+        return result.get("webUrl")
+
+    def list_group_notebooks(self, group_id: str) -> List[Dict[str, Any]]:
+        """OneNote-Notebooks einer Gruppe auflisten."""
+        notebooks = []
+        endpoint = f"/groups/{group_id}/onenote/notebooks"
+
+        while endpoint:
+            result = self._make_request("GET", endpoint)
+            notebooks.extend(result.get("value", []))
+
+            next_link = result.get("@odata.nextLink")
+            if next_link:
+                endpoint = next_link.replace(self.BASE_URL, "")
+            else:
+                endpoint = None
+
+        return notebooks
+
     def get_user(self, user_id: str) -> Dict[str, Any]:
         """Einzelnen Benutzer anhand der User-ID abrufen."""
         endpoint = f"/users/{user_id}"

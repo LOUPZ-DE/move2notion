@@ -54,6 +54,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('planner-migration-form');
     const progressSection = document.getElementById('planner-progress-section');
 
+    // Plan-ID aus URL-Parameter vorausfuellen (von Overview)
+    var urlParams = new URLSearchParams(window.location.search);
+    var prefillPlanId = urlParams.get('plan_id');
+    if (prefillPlanId) {
+        document.getElementById('planner_plan_id').value = prefillPlanId;
+    }
+
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
         

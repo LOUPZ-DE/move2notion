@@ -4,7 +4,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC_BY--NC_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
-[![Changelog](https://img.shields.io/badge/Changelog-v0.8.5-orange.svg)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/Changelog-v0.9.1-orange.svg)](CHANGELOG.md)
 
 ---
 
@@ -71,6 +71,7 @@ python app.py
 
 **Features:**
 - 🔐 **Microsoft OAuth-Authentifizierung**
+- 🔍 **Overview-Dashboard** mit Gruppen, Notebooks und Planner-Plänen
 - 📓 **OneNote-Migration** mit grafischer Notebook-Auswahl
 - 📋 **Planner-Migration** mit Status-Anzeige
 - 📊 **Live-Fortschrittsanzeige** während der Migration
@@ -80,9 +81,32 @@ python app.py
 
 ---
 
-### 1. **Planner → Notion** (CLI)
+### 1. **Overview** (CLI + Web)
 
-CSV-basierte Aufgabenmigration mit Personen-Mapping.
+Alle Microsoft 365-Gruppen im Tenant mit ihren OneNote-Notebooks und Planner-Boards auflisten.
+
+```bash
+# Alle Gruppen mit Notebooks und Plans
+python -m tools.overview.cli
+
+# Nur Gruppen (schneller bei großen Tenants)
+python -m tools.overview.cli --groups-only
+
+# Maschinenlesbare Ausgabe
+python -m tools.overview.cli --json
+```
+
+**Features:**
+- Teams-Gruppen mit IDs auflisten
+- OneNote-Notebooks pro Gruppe entdecken
+- Planner-Pläne pro Gruppe entdecken
+- JSON-Export für Weiterverarbeitung
+
+📖 [Details](documentation/OVERVIEW.md)
+
+### 2. **Planner → Notion** (CLI)
+
+API-basierte Aufgabenmigration mit Personen-Mapping.
 
 ```bash
 python -m tools.planner_migration.cli \
@@ -99,7 +123,7 @@ python -m tools.planner_migration.cli \
 
 📖 [Details](documentation/PLANNER.md)
 
-### 2. **OneNote → Notion** (CLI)
+### 3. **OneNote → Notion** (CLI)
 
 Rich-Content-Migration aus SharePoint OneNote.
 
@@ -169,6 +193,7 @@ ms_notion_migration/
 │   └── state_manager.py    # Idempotenz
 │
 ├── tools/                  # Migrationstools (CLI)
+│   ├── overview/          # Gruppen/Notebooks/Plans Discovery
 │   ├── planner_migration/
 │   └── onenote_migration/
 │
@@ -180,6 +205,7 @@ ms_notion_migration/
 │   └── QUICKSTART.md      # 5-Minuten-Setup
 │
 └── documentation/          # Dokumentation
+    ├── OVERVIEW.md
     ├── PLANNER.md
     ├── ONENOTE.md
     └── WEB_GUI.md
