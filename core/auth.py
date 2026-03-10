@@ -23,6 +23,8 @@ class AuthConfig:
     # Web-spezifische Konfiguration
     ms_client_secret: Optional[str] = None
     redirect_uri: Optional[str] = None
+    # Auth-Modus: "delegated" oder "application"
+    auth_mode: str = "delegated"
 
     def __post_init__(self):
         if self.ms_scopes is None:
@@ -181,6 +183,49 @@ class MicrosoftWebAuthenticator:
             del self._token_cache[session_id]
 
 
+class MicrosoftAppAuthenticator:
+    """Microsoft Graph Authentifizierung mit Client Credentials Flow (Application Permissions).
+
+    Verwendet Application Permissions (kein User-Login erforderlich).
+    Geeignet für Server-zu-Server-Szenarien und automatisierte Pipelines.
+    """
+
+    def __init__(self, config: AuthConfig):
+        if not config.ms_client_secret:
+            raise ValueError("MS_CLIENT_SECRET is required for application authentication")
+
+        self.config = config
+        self.app = msal.ConfidentialClientApplication(
+            client_id=config.ms_client_id,
+            client_credential=config.ms_client_secret,
+            authority=f"https://login.microsoftonline.com/{config.ms_tenant_id}"
+        )
+        self._token = None
+
+    @property
+    def token(self) -> str:
+        """Access Token abrufen (MSAL cached intern, ca. 1h gültig)."""
+        # Client Credentials Flow nutzt immer .default Scope
+        result = self.app.acquire_token_for_client(
+            scopes=["https://graph.microsoft.com/.default"]
+        )
+
+        if result and "access_token" in result:
+            self._token = result
+            return result["access_token"]
+
+        if self._token and "access_token" in self._token:
+            return self._token["access_token"]
+
+        error_desc = result.get("error_description", "Unknown error") if result else "No result"
+        raise RuntimeError(f"Client Credentials token acquisition failed: {error_desc}")
+
+    @property
+    def headers(self) -> Dict[str, str]:
+        """HTTP Headers für Microsoft Graph API."""
+        return {"Authorization": f"Bearer {self.token}"}
+
+
 class NotionAuthenticator:
     """Notion API Authentifizierung."""
 
@@ -219,19 +264,25 @@ class AuthManager:
 
     def initialize(self, config: Optional[AuthConfig] = None, mode: str = "cli"):
         """Auth-Manager mit Konfiguration initialisieren.
-        
+
         Args:
             config: Authentifizierungs-Konfiguration
-            mode: Authentifizierungsmodus ("cli" oder "web")
+            mode: Interaktionsmodus ("cli" oder "web")
+
+        Auth-Modus wird durch MS_AUTH_MODE Umgebungsvariable gesteuert:
+            - "delegated" (default): Device Code Flow (CLI) / Auth Code Flow (Web)
+            - "application": Client Credentials Flow (kein User-Login)
         """
         if config is None:
+            auth_mode = os.getenv("MS_AUTH_MODE", "delegated").lower().strip()
             config = AuthConfig(
                 ms_client_id=os.getenv("MS_CLIENT_ID", ""),
                 ms_tenant_id=os.getenv("MS_TENANT_ID", "consumers"),
                 ms_scopes=[s.strip() for s in os.getenv("MS_GRAPH_SCOPES", "Notes.Read.All,Sites.Read.All").split(",")],
                 notion_token=os.getenv("NOTION_TOKEN", ""),
                 ms_client_secret=os.getenv("MS_CLIENT_SECRET"),
-                redirect_uri=os.getenv("FLASK_REDIRECT_URI", "http://localhost:8080/callback")
+                redirect_uri=os.getenv("FLASK_REDIRECT_URI", "http://localhost:8080/callback"),
+                auth_mode=auth_mode
             )
 
         if not config.ms_client_id:
@@ -241,15 +292,28 @@ class AuthManager:
 
         self._config = config
         self._mode = mode
-        
+
         # Authentifizierungs-Modus auswählen
-        if mode == "cli":
+        if config.auth_mode == "application":
+            # Validierungen für Application-Modus
+            if not config.ms_client_secret:
+                raise ValueError(
+                    "MS_CLIENT_SECRET is required when MS_AUTH_MODE=application. "
+                    "Create a Client Secret in Azure AD > Certificates & secrets."
+                )
+            if config.ms_tenant_id in ("consumers", "common"):
+                raise ValueError(
+                    "MS_TENANT_ID must be a specific tenant ID when MS_AUTH_MODE=application. "
+                    "Client Credentials Flow does not work with 'common' or 'consumers'."
+                )
+            self._ms_auth = MicrosoftAppAuthenticator(config)
+        elif mode == "cli":
             self._ms_auth = MicrosoftAuthenticator(config)
         elif mode == "web":
             self._ms_auth = MicrosoftWebAuthenticator(config)
         else:
             raise ValueError(f"Invalid authentication mode: {mode}. Use 'cli' or 'web'.")
-        
+
         self._notion_auth = NotionAuthenticator(config.notion_token)
 
     @property
@@ -261,8 +325,15 @@ class AuthManager:
 
     @property
     def mode(self) -> Optional[str]:
-        """Aktueller Authentifizierungsmodus."""
+        """Aktueller Interaktionsmodus (cli/web)."""
         return self._mode
+
+    @property
+    def auth_mode(self) -> Optional[str]:
+        """Aktueller Auth-Modus (delegated/application)."""
+        if self._config:
+            return self._config.auth_mode
+        return None
 
     @property
     def notion(self) -> NotionAuthenticator:

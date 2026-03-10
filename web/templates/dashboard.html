@@ -48,6 +48,16 @@
                 <span class="status-label">Notion API:</span>
                 <span class="status-value status-success">✓ Verbunden</span>
             </div>
+            <div class="status-item">
+                <span class="status-label">Auth-Modus:</span>
+                <span class="status-value">
+                    {% if auth_mode == 'application' %}
+                        Application (Client Credentials)
+                    {% else %}
+                        Delegated (User Login)
+                    {% endif %}
+                </span>
+            </div>
         </div>
     </div>
 </div>

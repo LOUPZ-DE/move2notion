@@ -4,6 +4,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC_BY--NC_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
+[![Changelog](https://img.shields.io/badge/Changelog-v0.8.5-orange.svg)](CHANGELOG.md)
 
 ---
 
@@ -134,9 +135,26 @@ python -m tools.onenote_migration.cli \
 | **Automatisierung** | ✅ Skriptbar | ❌ Interaktiv |
 | **Mehrbenutzer** | ❌ | ❌ (Single-User) |
 
-**Empfehlung:** 
+**Empfehlung:**
 - **Web-GUI** für gelegentliche, interaktive Migrationen
 - **CLI** für Automatisierung und Batch-Verarbeitung
+
+### Application Permissions (Server-zu-Server)
+
+Für automatisierte Pipelines ohne User-Login:
+
+```bash
+# .env
+MS_AUTH_MODE=application
+MS_CLIENT_SECRET=ihr-client-secret
+
+# Für Web-GUI zusätzlich:
+ADMIN_PASSWORD=sicheres-passwort
+```
+
+Erfordert Azure AD Application Permissions mit Admin Consent.
+
+Siehe [Application Permissions](documentation/APPLICATION_PERMISSIONS.md) für Details.
 
 ---
 

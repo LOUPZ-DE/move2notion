@@ -22,16 +22,41 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
 web_auth_manager = AuthManager()
 
 
+def is_application_mode() -> bool:
+    """Prüfen ob Application-Modus aktiv ist."""
+    return os.getenv("MS_AUTH_MODE", "delegated").lower().strip() == "application"
+
+
+def verify_admin_password(password: str) -> bool:
+    """Admin-Passwort prüfen."""
+    admin_pw = os.getenv("ADMIN_PASSWORD", "")
+    if not admin_pw:
+        return False
+    return password == admin_pw
+
+
 def init_auth():
     """Authentifizierung initialisieren."""
     if not web_auth_manager.mode:
         web_auth_manager.initialize(mode="web")
+        # Bei Application-Modus: ADMIN_PASSWORD muss gesetzt sein
+        if is_application_mode() and not os.getenv("ADMIN_PASSWORD"):
+            raise RuntimeError(
+                "ADMIN_PASSWORD must be set in .env when MS_AUTH_MODE=application. "
+                "This password protects the Web-GUI since Microsoft login is skipped."
+            )
 
 
 @app.before_request
 def before_request():
     """Vor jedem Request: Auth initialisieren."""
     init_auth()
+
+
+@app.context_processor
+def inject_auth_mode():
+    """Auth-Modus für Templates verfügbar machen."""
+    return {"auth_mode": os.getenv("MS_AUTH_MODE", "delegated").lower().strip()}
 
 
 # ===== Authentifizierungs-Routes =====
@@ -44,25 +69,37 @@ def index():
     return render_template("dashboard.html")
 
 
-@app.route("/login")
+@app.route("/login", methods=["GET", "POST"])
 def login():
     """Login-Seite."""
     if "authenticated" in session:
         return redirect(url_for("index"))
-    
-    # Session-ID generieren falls nicht vorhanden
+
+    if is_application_mode():
+        # Application-Modus: Passwort-Formular statt MS OAuth
+        if request.method == "POST":
+            password = request.form.get("password", "")
+            if verify_admin_password(password):
+                session["authenticated"] = True
+                return redirect(url_for("index"))
+            else:
+                return render_template("login_password.html", error="Falsches Passwort")
+        return render_template("login_password.html")
+
+    # Delegated-Modus: MS OAuth Flow (bestehend)
     if "session_id" not in session:
         session["session_id"] = secrets.token_urlsafe(32)
-    
-    # Generiere Auth-URL
+
     auth_url = web_auth_manager.microsoft.get_auth_url(session["session_id"])
-    
     return render_template("login.html", auth_url=auth_url)
 
 
 @app.route("/callback")
 def callback():
     """OAuth-Callback von Microsoft."""
+    if is_application_mode():
+        return redirect(url_for("login"))
+
     code = request.args.get("code")
     error = request.args.get("error")
     
@@ -89,9 +126,10 @@ def callback():
 @app.route("/logout")
 def logout():
     """Logout."""
-    session_id = session.get("session_id")
-    if session_id:
-        web_auth_manager.microsoft.clear_session(session_id)
+    if not is_application_mode():
+        session_id = session.get("session_id")
+        if session_id and hasattr(web_auth_manager.microsoft, 'clear_session'):
+            web_auth_manager.microsoft.clear_session(session_id)
     session.clear()
     return redirect(url_for("login"))
 

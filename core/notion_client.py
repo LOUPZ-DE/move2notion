@@ -193,13 +193,22 @@ class NotionClient:
         """Blöcke an bestehende Seite anhängen."""
         url = f"/blocks/{block_id}/children"
         result = None
+        failed_batches = 0
+        total_batches = (len(children) + 49) // 50
 
         # Blöcke in Batches von 50 senden (Notion-Limit)
         for i in range(0, len(children), 50):
             batch = children[i:i+50]
-            result = self._make_request("PATCH", url, json={"children": batch})
+            try:
+                result = self._make_request("PATCH", url, json={"children": batch})
+            except Exception as e:
+                failed_batches += 1
+                batch_num = i // 50 + 1
+                print(f"[⚠] Batch {batch_num}/{total_batches} fehlgeschlagen ({len(batch)} Blöcke): {e}")
             time.sleep(0.12)  # Rate limiting
 
+        if failed_batches:
+            print(f"[⚠] {failed_batches} von {total_batches} Batches fehlgeschlagen")
         return result or {}
 
     def find_page_by_property(self, database_id: str, property_name: str, property_value: str) -> Optional[str]:

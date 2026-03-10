@@ -123,6 +123,25 @@ web/
 
 Die Web-GUI kümmert sich automatisch um Token-Refresh, sodass Sie während der Nutzung nicht neu authentifiziert werden müssen.
 
+### Application-Modus (Client Credentials)
+
+Wenn `MS_AUTH_MODE=application` in `.env` gesetzt ist:
+
+1. **Kein Microsoft-Login erforderlich** — die App verwendet Application Permissions
+2. **Passwort-Schutz** — die Web-GUI wird mit `ADMIN_PASSWORD` geschützt
+3. **Breiterer Zugriff** — Application Permissions greifen auf alle Daten im Tenant zu
+
+**Konfiguration:**
+
+```bash
+# .env
+MS_AUTH_MODE=application
+MS_CLIENT_SECRET=ihr-client-secret
+ADMIN_PASSWORD=sicheres-passwort
+```
+
+Siehe [Application Permissions Dokumentation](APPLICATION_PERMISSIONS.md) für das vollständige Azure AD Setup.
+
 ### Code-Implementierung
 
 Die Web-Authentifizierung ist in `core/auth.py` implementiert:
@@ -133,9 +152,12 @@ auth_manager.initialize(mode="cli")
 
 # Für Web (Authorization Code Flow)
 auth_manager.initialize(mode="web")
+
+# Application-Modus wird automatisch über MS_AUTH_MODE=application aktiviert
+# und nutzt Client Credentials Flow (kein User-Login)
 ```
 
-Die gleichen `core/ms_graph_client.py` und `core/notion_client.py` Module werden von beiden Modi verwendet.
+Die gleichen `core/ms_graph_client.py` und `core/notion_client.py` Module werden von allen Modi verwendet.
 
 ---
 

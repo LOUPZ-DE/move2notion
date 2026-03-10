@@ -93,10 +93,9 @@ def process_list_recursive(
     
     for li in list_el.find_all("li", recursive=False):
         # Bilder-Check (wenn Funktion übergeben wurde)
+        # Bilder werden zu blocks_ref hinzugefügt, Text wird trotzdem extrahiert
         if handle_images_fn and blocks_ref is not None:
-            has_images = handle_images_fn(li, create_paragraph=False)
-            if has_images:
-                continue  # Bilder wurden bereits zur blocks_ref hinzugefügt
+            handle_images_fn(li, create_paragraph=False)
         
         # To-Do Detection
         checked = False
@@ -308,10 +307,23 @@ def build_rich_text(node: Tag, exclude_nested_lists: bool = False) -> List[Dict[
     # Whitespace-only Text-Parts entfernen (führen zu Problemen)
     parts = [p for p in parts if p["type"] != "text" or p["text"]["content"].strip()]
     
-    # Notion-Limit: 2000 Zeichen pro rich_text Element
+    # Notion-Limit: 2000 Zeichen pro rich_text Element — splitten statt abschneiden
+    split_parts = []
     for p in parts:
         if p["type"] == "text" and len(p["text"]["content"]) > 2000:
-            p["text"]["content"] = p["text"]["content"][:2000]
+            content = p["text"]["content"]
+            annotations = p.get("annotations")
+            link = p["text"].get("link")
+            for i in range(0, len(content), 2000):
+                chunk = {"type": "text", "text": {"content": content[i:i+2000]}}
+                if link:
+                    chunk["text"]["link"] = link
+                if annotations:
+                    chunk["annotations"] = annotations
+                split_parts.append(chunk)
+        else:
+            split_parts.append(p)
+    parts = split_parts
     
     # Leere Annotations entfernen (wenn alle False)
     for p in parts:
@@ -505,7 +517,18 @@ def html_to_blocks_and_tables(
         
         # Wenn nur Text (keine Bilder in direkten Kindern), prüfe verschachtelte
         if all(p[0] == 'text' for p in parts) or not parts:
-            # Fallback: Bilder sind tiefer verschachtelt
+            # Fallback: Bilder sind tiefer verschachtelt — Text trotzdem extrahieren
+            el_text = build_rich_text(el)
+            has_text = any(
+                rt.get("text", {}).get("content", "").strip()
+                for rt in el_text if rt.get("type") == "text"
+            )
+            if has_text and create_paragraph:
+                blocks.append({
+                    "object": "block",
+                    "type": "paragraph",
+                    "paragraph": {"rich_text": el_text}
+                })
             for img in imgs:
                 img_id = id(img)
                 if img_id not in processed_imgs:
@@ -637,9 +660,13 @@ def html_to_blocks_and_tables(
         # Tabellen
         elif name == "table":
             rows = []
-            for tr in el.find_all("tr", recursive=False):
+            for tr in el.find_all("tr", recursive=True):
+                # Überspringe <tr> aus verschachtelten Sub-Tabellen
+                if tr.find_parent("table") != el:
+                    continue
                 cells = [td.get_text(" ", strip=True) for td in tr.find_all(["td", "th"], recursive=False)]
-                rows.append(cells)
+                if cells:
+                    rows.append(cells)
             if rows:
                 tables.append(rows)
         
@@ -672,7 +699,17 @@ def html_to_blocks_and_tables(
                     upload_id = notion_client.upload_file(fname, data, ctype)
                     if upload_id:
                         blocks.append(notion_client.create_file_block(upload_id))
-    
+
+        # Fallback: Block-Elemente mit direktem Text (div, span, section, etc.)
+        elif name in ("div", "section", "article", "main", "aside", "header", "footer", "figcaption"):
+            has_direct_text = any(
+                isinstance(child, NavigableString) and child.strip()
+                for child in el.children
+            )
+            if has_direct_text and not el.find(["p", "h1", "h2", "h3", "ul", "ol", "table", "pre", "blockquote"]):
+                if el.get_text(strip=True):
+                    add_paragraph_rich(el)
+
     # Fallback: Wenn keine Blöcke erstellt wurden
     if not blocks and soup.get_text(strip=True):
         blocks.append({
@@ -683,8 +720,7 @@ def html_to_blocks_and_tables(
             }
         })
     
-    # Notion-Limit: Max 150 Blöcke pro Request
-    return blocks[:150], tables
+    return blocks, tables
 
 
 def append_table(notion_client, parent_block_id: str, rows: List[List[str]]):
