@@ -61,6 +61,13 @@ body {
     background-clip: text;
 }
 
+.hero-icon {
+    width: 1em;
+    height: 1em;
+    vertical-align: -0.1em;
+    border-radius: 0.15em;
+}
+
 .hero .tagline {
     font-size: 1.8rem;
     font-weight: 600;

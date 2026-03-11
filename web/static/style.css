@@ -146,6 +146,32 @@ main.container {
     text-align: center;
 }
 
+.login-brand {
+    margin-bottom: 28px;
+}
+
+.login-logo {
+    width: 80px;
+    height: 80px;
+    border-radius: 18px;
+    margin-bottom: 16px;
+    box-shadow: 0 4px 16px rgba(99, 102, 241, 0.3);
+}
+
+.login-title {
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--primary-color);
+    margin-bottom: 8px;
+    letter-spacing: -0.5px;
+}
+
+.login-subtitle {
+    color: var(--text-light);
+    font-size: 15px;
+    margin: 0;
+}
+
 .login-box h2 {
     margin-bottom: 16px;
     color: var(--text-color);

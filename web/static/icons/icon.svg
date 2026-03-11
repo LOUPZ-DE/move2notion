@@ -7,10 +7,6 @@
   </defs>
   <!-- Rounded square background -->
   <rect width="512" height="512" rx="96" fill="url(#bg)"/>
-  <!-- M (Microsoft) -->
-  <text x="100" y="340" font-family="system-ui,-apple-system,sans-serif" font-size="260" font-weight="700" fill="white" opacity="0.95">M</text>
-  <!-- Arrow -->
-  <path d="M295 240 L340 240 L340 210 L390 255 L340 300 L340 270 L295 270 Z" fill="white" opacity="0.7"/>
-  <!-- N (Notion) -->
-  <text x="340" y="400" font-family="system-ui,-apple-system,sans-serif" font-size="160" font-weight="600" fill="white" opacity="0.85">N</text>
+  <!-- m2n text -->
+  <text x="256" y="310" font-family="system-ui,-apple-system,'Segoe UI',sans-serif" font-size="180" font-weight="800" fill="white" text-anchor="middle" letter-spacing="-6">m2n</text>
 </svg>
