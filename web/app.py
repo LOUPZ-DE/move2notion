@@ -16,11 +16,12 @@ load_dotenv()
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.auth import AuthManager, AuthConfig
+from tools.onenote_migration.cli import compute_hierarchy_prefixes
 from web.task_manager import task_manager, TaskStatus, emit_progress, emit_complete
 
 def print_banner(port: int):
     """Startup-Banner mit ASCII-Art ausgeben."""
-    VERSION = "0.9.3"
+    VERSION = "0.9.5"
     C = "\033[36m"    # Cyan
     B = "\033[1;34m"  # Bold Blue
     W = "\033[1;37m"  # Bold White
@@ -319,6 +320,10 @@ def _run_onenote_migration(task, site_id, notebook_ids, database_id, session_id)
         notion_client = NotionClient(auth_manager_instance=web_auth_manager)
         content_mapper = ContentMapper(notion_client, ms_client, site_id)
 
+        # Schema sicherstellen (fehlende Properties anlegen)
+        emit_progress(task, 1, "Pruefe Datenbank-Schema...", phase="DB vorbereiten")
+        content_mapper.ensure_database_schema(database_id)
+
         # Phase 1: Notebooks laden
         emit_progress(task, 2, "Lade Notebook-Informationen...", phase="Notebooks laden")
         all_notebooks = ms_client.list_site_notebooks(site_id)
@@ -375,19 +380,30 @@ def _run_onenote_migration(task, site_id, notebook_ids, database_id, session_id)
             sec_name = section.get("displayName", "")
             sec_group = section.get("_groupName", "")
 
+            # Hierarchische Nummerierung berechnen (basierend auf level/order via pagelevel=true)
+            hierarchy_prefixes = compute_hierarchy_prefixes(pages)
+
             if pages:
                 label = f"{sec_group}/{sec_name}" if sec_group else sec_name
-                emit_progress(task, task.progress, f"Section: {label} ({len(pages)} Seiten)")
+                if hierarchy_prefixes:
+                    emit_progress(task, task.progress,
+                        f"Section: {label} ({len(pages)} Seiten, {len(hierarchy_prefixes)} mit Hierarchie-Prefix)",
+                        log_type="success")
+                else:
+                    emit_progress(task, task.progress,
+                        f"Section: {label} ({len(pages)} Seiten)")
 
             for page in pages:
                 page_title = page.get("title") or "Untitled"
+                prefix = hierarchy_prefixes.get(page["id"], "")
                 try:
                     notion_page_id = content_mapper.map_page_to_notion(
                         onenote_page=page,
                         database_id=database_id,
                         section_name=sec_name,
                         notebook_name=nb_name,
-                        section_group=sec_group
+                        section_group=sec_group,
+                        hierarchy_prefix=prefix
                     )
                     processed += 1
                     progress = 15 + int(processed / total_pages * 80)
@@ -396,8 +412,9 @@ def _run_onenote_migration(task, site_id, notebook_ids, database_id, session_id)
                         task.success_count += 1
                         # Bildzaehlung aus den Server-Logs nicht verfuegbar,
                         # aber Seitenname + Erfolg reicht fuer GUI
+                        display_title = f"{prefix}{page_title}" if prefix else page_title
                         emit_progress(task, progress,
-                            f"[{processed}/{total_pages}] Importiert: {page_title}",
+                            f"[{processed}/{total_pages}] Importiert: {display_title}",
                             log_type="success")
                     else:
                         task.error_count += 1
@@ -673,6 +690,55 @@ def get_group_details(group_id):
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ===== Notion-Datenbank erstellen =====
+
+@app.route("/api/notion/create-database", methods=["POST"])
+def create_notion_database():
+    """Neue Notion-Datenbank mit passendem Schema erstellen."""
+    if "authenticated" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    data = request.json
+    parent_page_id = data.get("parent_page_id")
+    title = data.get("title", "").strip()
+    db_type = data.get("type")  # "onenote" oder "planner"
+
+    if not parent_page_id:
+        return jsonify({"error": "parent_page_id required"}), 400
+    if not title:
+        return jsonify({"error": "title required"}), 400
+    if db_type not in ("onenote", "planner"):
+        return jsonify({"error": "type must be 'onenote' or 'planner'"}), 400
+
+    try:
+        from core.notion_client import NotionClient
+
+        notion_client = NotionClient(auth_manager_instance=web_auth_manager)
+        parent_page_id = notion_client._normalize_uuid(parent_page_id)
+
+        # Schema je nach Typ zusammenstellen
+        if db_type == "onenote":
+            from tools.onenote_migration.content_mapper import ContentMapper
+            properties = {"Name": {"title": {}}}
+            properties.update(ContentMapper.BASE_PROPERTIES)
+        else:
+            from tools.planner_migration.notion_mapper import NotionMapper
+            properties = dict(NotionMapper.BASE_PROPERTIES)
+
+        result = notion_client.create_database(parent_page_id, title, properties)
+        database_id = result.get("id", "")
+
+        return jsonify({"database_id": database_id, "title": title})
+
+    except Exception as e:
+        error_msg = str(e)
+        if "Could not find page" in error_msg or "object_not_found" in error_msg:
+            return jsonify({"error": "Seite nicht gefunden. Pruefen Sie die Eltern-Seiten-ID und ob die Notion-Integration Zugriff auf die Seite hat."}), 400
+        if "validation_error" in error_msg:
+            return jsonify({"error": "Validierungsfehler: " + error_msg}), 400
+        return jsonify({"error": error_msg}), 500
 
 
 # ===== Fehlerbehandlung =====

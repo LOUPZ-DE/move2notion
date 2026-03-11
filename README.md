@@ -4,7 +4,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC_BY--NC_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
-[![Changelog](https://img.shields.io/badge/Changelog-v0.9.3-orange.svg)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/Changelog-v0.9.5-orange.svg)](CHANGELOG.md)
 
 ---
 
@@ -280,6 +280,12 @@ A: Bilder werden heruntergeladen und direkt zu Notion hochgeladen.
 
 **F: Kann ich Fehler beheben und erneut ausführen?**
 A: Ja! Mit `--resume` (oder ohne, um zu überschreiben).
+
+**F: Welche Properties braucht die Notion-Datenbank?**
+A: Fehlende Properties werden **automatisch ergänzt** (`ensure_database_schema`). In der Web-GUI kann man auch direkt eine neue Datenbank mit passendem Schema erstellen ("+ Neue DB"). Die erwarteten Properties:
+
+- **Planner:** Aufgabenname (title), LPH/Aufgabentyp (select), Status (status), Priorität (select), Fachdisziplin (multi_select), Tags (multi_select), verantwortlich (people), Fälligkeitsdatum (date)
+- **OneNote:** Name (title), Section (select), SectionGroup (select), Notebook (rich_text), OneNotePageId (rich_text), SourceURL (url), LastEditedUtc (date)
 
 ---
 

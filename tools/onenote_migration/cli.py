@@ -29,6 +29,113 @@ from .content_mapper import ContentMapper
 from .resource_handler import ResourceHandler
 
 
+def compute_hierarchy_prefixes(pages: List[Dict[str, Any]]) -> Dict[str, str]:
+    """
+    Berechnet hierarchische Nummern-Prefixe für OneNote-Seiten basierend auf `level` und `order`.
+
+    OneNote-Page-Levels (Graph API):
+      0 = Top-Level-Seite
+      1 = Unterseite (eingerückt)
+      2 = Unter-Unterseite (doppelt eingerückt)
+
+    Nummerierung nur bei Seiten, die Teil einer Hierarchie sind:
+      - Level-0-Seiten MIT nachfolgenden Unterseiten → "1  ", "2  ", ...
+      - Level-0-Seiten OHNE Unterseiten → kein Prefix
+      - Level-1-Seiten → "1.1  ", "1.2  ", ...
+      - Level-2-Seiten → "1.1.1  ", "1.1.2  ", ...
+
+    Args:
+        pages: Liste von OneNote-Pages (sortiert nach order)
+
+    Returns:
+        Dict[page_id, prefix_string] - Mapping von Page-ID zu Prefix
+    """
+    if not pages:
+        return {}
+
+    # Schritt 0: Nach order sortieren (Fallback falls API $orderby ignoriert)
+    sorted_pages = sorted(pages, key=lambda p: p.get("order", 0))
+
+    # Schritt 1: Level für jede Seite ermitteln (Default: 0 falls nicht vorhanden)
+    page_levels = []
+    has_any_level = False
+    for p in sorted_pages:
+        level = p.get("level", 0)
+        if level > 0:
+            has_any_level = True
+        page_levels.append((p["id"], p.get("title", "Untitled"), level))
+
+    # Debug: Zeige erkannte Level-Verteilung
+    level_counts = {}
+    for _, _, lvl in page_levels:
+        level_counts[lvl] = level_counts.get(lvl, 0) + 1
+    print(f"[🔢] Hierarchie-Analyse: {len(pages)} Seiten, Level-Verteilung: {dict(sorted(level_counts.items()))}")
+    if not has_any_level:
+        print(f"[ℹ] Keine Unterseiten erkannt (alle Level=0) → keine Prefixe")
+        return {}
+
+    # Schritt 2: Vorausschau — welche Level-0-Seiten haben Unterseiten?
+    has_children = set()
+    for i, (pid, title, level) in enumerate(page_levels):
+        if level == 0:
+            # Prüfe ob nachfolgende Seiten Level > 0 haben
+            for j in range(i + 1, len(page_levels)):
+                next_level = page_levels[j][2]
+                if next_level > 0:
+                    has_children.add(pid)
+                    break  # Mindestens ein Kind gefunden
+                else:
+                    break  # Nächste Level-0-Seite → keine Kinder
+
+    # Schritt 3: Nummern zuweisen (als Tuples für späteres Zero-Padding)
+    num_tuples: Dict[str, tuple] = {}
+    l0_counter = 0       # Zähler für Level-0-Gruppen (nur mit Kindern)
+    l1_counter = 0       # Zähler für Level-1 innerhalb einer Gruppe
+    l2_counter = 0       # Zähler für Level-2 innerhalb einer L1-Gruppe
+
+    for pid, _, level in page_levels:
+        if level == 0:
+            l1_counter = 0
+            l2_counter = 0
+            if pid in has_children:
+                l0_counter += 1
+                num_tuples[pid] = (l0_counter, )
+            # Kein Prefix für Level-0 ohne Kinder
+        elif level == 1:
+            l1_counter += 1
+            l2_counter = 0
+            num_tuples[pid] = (l0_counter, l1_counter)
+        elif level >= 2:
+            l2_counter += 1
+            num_tuples[pid] = (l0_counter, l1_counter, l2_counter)
+
+    # Schritt 4: Zero-Padding berechnen
+    max_l0 = l0_counter
+    max_l1 = 0
+    max_l2 = 0
+    for nums in num_tuples.values():
+        if len(nums) >= 2:
+            max_l1 = max(max_l1, nums[1])
+        if len(nums) >= 3:
+            max_l2 = max(max_l2, nums[2])
+
+    pad_l0 = len(str(max_l0)) if max_l0 > 0 else 1
+    pad_l1 = len(str(max_l1)) if max_l1 > 0 else 1
+    pad_l2 = len(str(max_l2)) if max_l2 > 0 else 1
+
+    # Schritt 5: Finale Prefix-Strings erstellen
+    result: Dict[str, str] = {}
+    for pid, nums in num_tuples.items():
+        if len(nums) == 1:
+            result[pid] = f"{str(nums[0]).zfill(pad_l0)}.  "
+        elif len(nums) == 2:
+            result[pid] = f"{str(nums[0]).zfill(pad_l0)}.{str(nums[1]).zfill(pad_l1)}.  "
+        elif len(nums) == 3:
+            result[pid] = f"{str(nums[0]).zfill(pad_l0)}.{str(nums[1]).zfill(pad_l1)}.{str(nums[2]).zfill(pad_l2)}.  "
+
+    return result
+
+
 class OneNoteMigrationCLI:
     """CLI-Interface für OneNote-Migration."""
 
@@ -243,6 +350,9 @@ Beispiele:
         # ContentMapper mit site_id initialisieren (falls noch nicht gemacht)
         if not self.content_mapper:
             self.content_mapper = ContentMapper(self.notion, self.ms_graph, site_id)
+            # Schema sicherstellen (fehlende Properties anlegen)
+            if self.args.database_id and not self.args.dry_run:
+                self.content_mapper.ensure_database_schema(self.args.database_id)
 
         # Notebook-Name speichern für späteren Zugriff
         self._current_notebook_name = notebook_name
@@ -305,9 +415,15 @@ Beispiele:
         # Seiten laden
         pages = self._get_pages(site_id, section_id)
 
+        # Hierarchische Nummerierung berechnen (basierend auf level/order)
+        hierarchy_prefixes = compute_hierarchy_prefixes(pages)
+        if hierarchy_prefixes and self.args and self.args.verbose:
+            print(f"    [i] Hierarchie erkannt: {len(hierarchy_prefixes)} Seiten mit Prefix")
+
         # Seiten verarbeiten
         for page in pages:
-            self._process_page(site_id, notebook_id, section_id, page)
+            prefix = hierarchy_prefixes.get(page["id"], "")
+            self._process_page(site_id, notebook_id, section_id, page, hierarchy_prefix=prefix)
 
     def _get_pages(self, site_id: str, section_id: str) -> List[Dict[str, Any]]:
         """Seiten einer Section laden."""
@@ -320,7 +436,7 @@ Beispiele:
             print(f"[❌] Seiten-Laden fehlgeschlagen: {e}")
             return []
 
-    def _process_page(self, site_id: str, notebook_id: str, section_id: str, page: Dict[str, Any]) -> None:
+    def _process_page(self, site_id: str, notebook_id: str, section_id: str, page: Dict[str, Any], hierarchy_prefix: str = "") -> None:
         """Einzelne Seite verarbeiten."""
         page_id = page["id"]
         page_title = page.get("title") or "Untitled"
@@ -351,7 +467,8 @@ Beispiele:
                 database_id=self.args.database_id,
                 section_name=getattr(self, '_current_section_name', ''),
                 notebook_name=getattr(self, '_current_notebook_name', ''),
-                section_group=getattr(self, '_current_section_group', '')
+                section_group=getattr(self, '_current_section_group', ''),
+                hierarchy_prefix=hierarchy_prefix
             )
 
     def _get_section_name(self, section_id: str) -> str:

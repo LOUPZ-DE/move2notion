@@ -277,6 +277,101 @@ function bindNotionIdField(inputElement) {
     });
 }
 
+// ===== DB-Erstellen Panel =====
+
+/**
+ * Initialisiert das "Neue DB erstellen"-Panel.
+ * toggleBtn: Button der das Panel auf/zuklappt
+ * panel: das .db-create-panel Element
+ * dbType: "onenote" oder "planner"
+ * targetInput: das Datenbank-ID Input-Feld (wird nach Erstellung befuellt)
+ */
+function initDbCreatePanel(toggleBtn, panel, dbType, targetInput) {
+    if (!toggleBtn || !panel) return;
+
+    var createBtn = panel.querySelector('.db-create-btn');
+    var parentInput = panel.querySelector('.db-create-parent');
+    var titleInput = panel.querySelector('.db-create-title');
+
+    // Notion-ID-Extraktion fuer Parent-Feld
+    bindNotionIdField(parentInput);
+
+    toggleBtn.addEventListener('click', function() {
+        var isOpen = !panel.classList.contains('hidden');
+        if (isOpen) {
+            panel.classList.add('hidden');
+            toggleBtn.textContent = '+ Neue DB';
+        } else {
+            panel.classList.remove('hidden');
+            toggleBtn.textContent = 'Abbrechen';
+            titleInput.focus();
+        }
+    });
+
+    createBtn.addEventListener('click', async function() {
+        var parentId = extractNotionId(parentInput.value);
+        var title = titleInput.value.trim();
+
+        if (!parentId || !title) {
+            showToast('Bitte Eltern-Seite und Name angeben.', 'error');
+            return;
+        }
+
+        createBtn.disabled = true;
+        createBtn.textContent = 'Erstelle...';
+
+        try {
+            var response = await fetch('/api/notion/create-database', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    parent_page_id: parentId,
+                    title: title,
+                    type: dbType
+                })
+            });
+
+            var data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Unbekannter Fehler');
+            }
+
+            // DB-ID in Zielfeld eintragen
+            targetInput.value = data.database_id;
+            showToast('Datenbank "' + data.title + '" erstellt', 'success');
+
+            // Panel zuklappen
+            panel.classList.add('hidden');
+            toggleBtn.textContent = '+ Neue DB';
+
+        } catch (error) {
+            showToast('Fehler: ' + error.message, 'error');
+        } finally {
+            createBtn.disabled = false;
+            createBtn.textContent = 'Datenbank erstellen';
+        }
+    });
+}
+
+// Schema-Toggle: Alle .schema-toggle Links initialisieren
+document.addEventListener('DOMContentLoaded', function() {
+    document.querySelectorAll('.schema-toggle').forEach(function(link) {
+        var targetId = link.getAttribute('data-target');
+        if (!targetId) return;
+        var panel = document.getElementById(targetId);
+        if (!panel) return;
+
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            var isOpen = panel.classList.contains('open');
+            panel.classList.toggle('open');
+            link.classList.toggle('active');
+            link.textContent = isOpen ? 'Schema anzeigen' : 'Schema ausblenden';
+        });
+    });
+});
+
 // Export für Verwendung in anderen Skripten
 window.app = {
     apiRequest: apiRequest,
@@ -285,5 +380,6 @@ window.app = {
     showToast: showToast,
     SSEMigrationClient: SSEMigrationClient,
     extractNotionId: extractNotionId,
-    bindNotionIdField: bindNotionIdField
+    bindNotionIdField: bindNotionIdField,
+    initDbCreatePanel: initDbCreatePanel
 };

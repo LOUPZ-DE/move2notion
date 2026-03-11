@@ -195,7 +195,9 @@ class MSGraphClient:
             pages_url = pages_url.replace(self.BASE_URL, "")
 
         # Query-Parameter hinzufügen
-        url = f"{pages_url}?$top=100"
+        # pagelevel=true ist ZWINGEND nötig, damit die API level/order Properties zurückgibt
+        # (diese sind NICHT im Default-Response und $select allein reicht NICHT)
+        url = f"{pages_url}?$top=100&pagelevel=true&$orderby=order"
         if since:
             url += f"&$filter=lastModifiedDateTime ge {since}T00:00:00Z"
 

@@ -3,8 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}MS → Notion Migration{% endblock %}</title>
+    <meta name="theme-color" content="#6366f1">
+    <meta name="description" content="Automatisierte Migration von Microsoft 365-Daten nach Notion">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Move2Notion">
+    <title>{% block title %}MS &rarr; Notion Migration{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='icons/favicon-32x32.png') }}">
+    <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='icons/favicon-16x16.png') }}">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
 </head>
 <body>
     <nav class="navbar">
@@ -33,6 +42,11 @@
     </footer>
 
     <script src="{{ url_for('static', filename='main.js') }}"></script>
+    <script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/static/sw.js').catch(function() {});
+    }
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 </html>

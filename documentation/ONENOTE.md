@@ -125,6 +125,26 @@ python -m tools.onenote_migration.cli \
 - Links zu Seiten außerhalb des Imports bleiben markiert: `"(Verlinkung unvollständig)"`
 - Können später manuell in Notion korrigiert werden
 
+### ✅ Hierarchische Nummerierung (Unterseiten)
+
+OneNote kennt Unterseiten (eingerueckt im Seitenbaum). Da Notion-Datenbanken flach sind, geht diese Struktur beim Import verloren. Das Tool erkennt die Hierarchie automatisch und stellt den Titeln Nummern-Prefixe voran:
+
+```
+OneNote:                          Notion:
+  Obere Ebene                      1.  Obere Ebene
+    Untere Ebene           →        1.1.  Untere Ebene
+      Untere untere Ebene           1.1.1.  Untere untere Ebene
+  Einzelne Seite                    Einzelne Seite (kein Prefix)
+```
+
+**Regeln:**
+- Nur Seiten **mit Unterseiten** werden nummeriert
+- Alleinstehende Seiten (ohne Kinder) bleiben unveraendert
+- Zero-Padding bei >9 Eintraegen pro Ebene (`01.`, `02.`, ..., `12.`)
+- Unterstuetzt bis zu 3 Hierarchie-Ebenen (Level 0, 1, 2)
+
+**Technisch:** Nutzt den `pagelevel=true`-Parameter der Microsoft Graph API, um `level` und `order` Properties zu erhalten.
+
 ### ✅ Asset-Handling (Bilder & Dateien)
 
 Das Tool **übernimmt automatisch Bilder und Dateien** aus OneNote-Seiten:

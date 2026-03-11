@@ -258,5 +258,5 @@ Write-Host "`n$added Gruppen hinzugefuegt (von $($groups.Count) gesamt)"
 - [x] Session-Persistenz: Geladene Daten bleiben bei Seitenwechsel erhalten (sessionStorage)
 - [x] Live-Migrations-Fortschritt via SSE (Server-Sent Events) für Planner und OneNote
 - [x] OneNote Web-Migration vollständig implementiert (nicht mehr Stub)
-- [ ] Suchfilter für Gruppen
-- [ ] Export der Übersicht als CSV/JSON im Web-GUI
+- [x] Suchfilter für Gruppen (Live-Filter nach Name, Mail, Beschreibung)
+- [x] Export der Übersicht als CSV/JSON im Web-GUI (clientseitiger Download)

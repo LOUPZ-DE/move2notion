@@ -20,10 +20,47 @@
 
             <div class="form-group">
                 <label for="notion_database_id">Notion Datenbank-ID:</label>
-                <input type="text" id="notion_database_id" name="notion_database_id"
-                       placeholder="Notion-Datenbank-ID oder Share-URL"
-                       class="form-control" required>
-                <small>Datenbank-ID oder Notion-Share-URL (ID wird automatisch extrahiert)</small>
+                <div class="input-with-action">
+                    <input type="text" id="notion_database_id" name="notion_database_id"
+                           placeholder="Notion-Datenbank-ID oder Share-URL"
+                           class="form-control" required>
+                    <button type="button" id="planner-db-toggle" class="btn btn-secondary btn-sm">+ Neue DB</button>
+                </div>
+                <small>ID oder Notion-Share-URL eingeben &mdash; oder neue Datenbank mit passendem Schema erstellen.
+                    <a href="#" class="schema-toggle" data-target="planner-schema-panel">Schema anzeigen</a>
+                </small>
+                <div id="planner-schema-panel" class="schema-panel">
+                    <div class="schema-panel-inner">
+                        <div class="schema-props">
+                            <span class="schema-prop"><strong>Aufgabenname</strong> <code>title</code></span>
+                            <span class="schema-prop"><strong>LPH/Aufgabentyp</strong> <code>select</code></span>
+                            <span class="schema-prop"><strong>Status</strong> <code>status</code></span>
+                            <span class="schema-prop"><strong>Priorit&auml;t</strong> <code>select</code></span>
+                            <span class="schema-prop"><strong>Fachdisziplin</strong> <code>multi_select</code></span>
+                            <span class="schema-prop"><strong>Tags</strong> <code>multi_select</code></span>
+                            <span class="schema-prop"><strong>verantwortlich</strong> <code>people</code></span>
+                            <span class="schema-prop"><strong>F&auml;lligkeitsdatum</strong> <code>date</code></span>
+                        </div>
+                        <p class="schema-hint">Fehlende Properties werden automatisch erg&auml;nzt.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="planner-db-create-panel" class="db-create-panel hidden">
+                <div class="db-create-form">
+                    <div class="form-group">
+                        <label for="planner-db-title">Datenbank-Name:</label>
+                        <input type="text" id="planner-db-title" class="form-control db-create-title"
+                               value="Planner Import" placeholder="z.B. Planner Import">
+                    </div>
+                    <div class="form-group">
+                        <label for="planner-db-parent">Eltern-Seite (Notion Page-ID oder URL):</label>
+                        <input type="text" id="planner-db-parent" class="form-control db-create-parent"
+                               placeholder="Notion-Seiten-ID oder Share-URL">
+                        <small>Die Seite, unter der die neue Datenbank erstellt wird.</small>
+                    </div>
+                    <button type="button" class="btn btn-primary db-create-btn">Datenbank erstellen</button>
+                </div>
             </div>
 
             <div class="action-row">
@@ -56,6 +93,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Notion-ID-Feld: URL oder rohe ID akzeptieren
     window.app.bindNotionIdField(document.getElementById('notion_database_id'));
+
+    // DB-Erstellen-Panel initialisieren
+    window.app.initDbCreatePanel(
+        document.getElementById('planner-db-toggle'),
+        document.getElementById('planner-db-create-panel'),
+        'planner',
+        document.getElementById('notion_database_id')
+    );
 
     // Plan-ID aus URL-Parameter vorausfuellen (von Overview)
     var urlParams = new URLSearchParams(window.location.search);

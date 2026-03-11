@@ -16,10 +16,21 @@ from .html_parser import html_to_blocks_and_tables, append_table
 class ContentMapper:
     """Orchestriert die Konvertierung von OneNote-Content zu Notion."""
 
+    # Basis-Properties für OneNote-Datenbanken
+    # Title-Property ("Name") wird automatisch erkannt und nicht hier definiert.
+    BASE_PROPERTIES = {
+        "Section": {"select": {}},
+        "SectionGroup": {"select": {}},
+        "Notebook": {"rich_text": {}},
+        "OneNotePageId": {"rich_text": {}},
+        "SourceURL": {"url": {}},
+        "LastEditedUtc": {"date": {}},
+    }
+
     def __init__(self, notion_client, ms_graph_client, site_id: str):
         """
         Initialisierung.
-        
+
         Args:
             notion_client: NotionClient-Instanz
             ms_graph_client: MSGraphClient-Instanz
@@ -28,6 +39,35 @@ class ContentMapper:
         self.notion = notion_client
         self.ms_graph = ms_graph_client
         self.site_id = site_id
+
+    def ensure_database_schema(self, database_id: str) -> None:
+        """Stellt sicher, dass die Datenbank alle OneNote-Properties hat.
+
+        Fehlende Properties werden automatisch angelegt.
+        Bereits vorhandene Properties (auch mit abweichendem Typ) bleiben unangetastet.
+        """
+        try:
+            current_db = self.notion.get_database(database_id)
+            existing_props = current_db.get("properties", {})
+
+            missing_props = {}
+            for prop_name, prop_config in self.BASE_PROPERTIES.items():
+                # Section/Bereich: auch "Bereich" als Alias akzeptieren
+                if prop_name == "Section":
+                    if "Section" not in existing_props and "Bereich" not in existing_props:
+                        missing_props[prop_name] = prop_config
+                elif prop_name not in existing_props:
+                    missing_props[prop_name] = prop_config
+
+            if missing_props:
+                self.notion.update_database(database_id, missing_props)
+                names = ", ".join(missing_props.keys())
+                print(f"[📋] {len(missing_props)} Properties angelegt: {names}")
+            else:
+                print(f"[📋] Datenbank-Schema vollstaendig")
+
+        except Exception as e:
+            print(f"[⚠] Schema-Pruefung fehlgeschlagen: {e}")
 
     def should_skip_page(
         self,
@@ -94,11 +134,12 @@ class ContentMapper:
         section_name: str = "",
         notebook_name: str = "",
         section_group: str = "",
-        skip_unchanged: bool = False
+        skip_unchanged: bool = False,
+        hierarchy_prefix: str = ""
     ) -> Optional[str]:
         """
         OneNote-Page zu Notion konvertieren.
-        
+
         Args:
             onenote_page: OneNote-Page-Metadaten
             database_id: Ziel-Notion-Datenbank-ID
@@ -106,13 +147,17 @@ class ContentMapper:
             notebook_name: Notebook-Name für Kategorisierung
             section_group: Section-Group-Name (verschachtelte Ordner in OneNote)
             skip_unchanged: Wenn True, unveränderte Seiten überspringen
-            
+            hierarchy_prefix: Hierarchische Nummerierung (z.B. "1.2  "), wird dem Titel vorangestellt
+
         Returns:
             Notion-Page-ID oder None bei Fehler
         """
         try:
             # 1. Metadaten extrahieren
             page_title = onenote_page.get("title") or "Untitled"
+            # Hierarchische Nummerierung dem Titel voranstellen (falls vorhanden)
+            if hierarchy_prefix:
+                page_title = f"{hierarchy_prefix}{page_title}"
             page_id = onenote_page["id"]
             created_time = onenote_page.get("createdDateTime")
             modified_time = onenote_page.get("lastModifiedDateTime")

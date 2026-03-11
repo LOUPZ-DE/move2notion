@@ -5,6 +5,42 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/)
 und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.9.5] - 2026-03-11
+
+### Hinzugefuegt
+- **Hierarchische Nummerierung fuer OneNote-Unterseiten**: Seiten mit Unterebenen erhalten automatisch Nummern-Prefixe im Titel (z.B. `1. Obere Ebene`, `1.1. Untere Ebene`, `1.1.1. Untere untere Ebene`)
+  - Erhaelt die OneNote-Seitenhierarchie (Level 0/1/2) in der flachen Notion-Datenbank
+  - Nur Seiten mit Unterseiten werden nummeriert, alleinstehende Seiten bleiben unveraendert
+  - Zero-Padding bei >9 Eintraegen (z.B. `01.`, `02.`, ..., `12.`)
+  - Basiert auf `pagelevel=true` Parameter der Microsoft Graph API
+  - Funktioniert in CLI und Web-GUI
+- **Auto-Schema fuer Notion-Datenbanken**: `ensure_database_schema()` prueft und ergaenzt fehlende Properties automatisch vor der Migration
+  - OneNote: Name, Section, SectionGroup, Notebook, OneNotePageId, SourceURL, LastEditedUtc
+  - Planner: Aufgabenname, LPH/Aufgabentyp, Status, Prioritaet, Fachdisziplin, Tags, verantwortlich, Faelligkeitsdatum
+  - Beruecksichtigt Section/Bereich-Alias bei OneNote
+- **Datenbank-Erstellung in der Web-GUI**: Neuer "+ Neue DB"-Button neben dem Datenbank-ID-Feld
+  - Ausklappbares Panel mit Datenbank-Name und Eltern-Seiten-ID
+  - Erstellt Notion-Datenbank mit korrektem Schema (OneNote oder Planner)
+  - DB-ID wird automatisch ins Formular eingetragen
+  - Neuer API-Endpoint `POST /api/notion/create-database`
+- **Inline-Schema-Referenz**: "Schema anzeigen"-Link unter dem DB-ID-Feld zeigt die erwarteten Properties als animiertes Panel mit Property-Chips
+- **PWA-Unterstuetzung**: Web-GUI ist als App installierbar (Chrome/Edge/Safari)
+  - Web App Manifest mit App-Name "Move2Notion", Theme-Color, Icons
+  - App-Icon (M→N auf Indigo-Gradient) in SVG + PNG (192px, 512px)
+  - Favicon (16px, 32px) und Apple Touch Icon (180px)
+  - Minimaler Service Worker fuer Installierbarkeit
+- **Overview Suchfilter**: Live-Filterfeld durchsucht Gruppen nach Name, Mail und Beschreibung
+  - Zaehler zeigt "X von Y Gruppen" bei aktivem Filter
+  - X-Button zum Zuruecksetzen
+- **Overview Export**: JSON- und CSV-Export der geladenen Uebersicht
+  - Clientseitiger Download ohne Server-Roundtrip
+  - CSV mit BOM fuer korrekte Umlaute in Excel
+  - Dateiname mit Datum: `m365-overview-YYYY-MM-DD.json/csv`
+- **FAQ erweitert**: Neuer Eintrag "Welche Properties braucht die Notion-Datenbank?" in README.md
+
+### Verbessert
+- `ContentMapper` hat jetzt `BASE_PROPERTIES` als Klassenkonstante (statt hartcodiert)
+
 ## [0.9.4] - 2026-03-11
 
 ### Hinzugefügt

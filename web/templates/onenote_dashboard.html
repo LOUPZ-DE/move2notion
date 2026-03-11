@@ -32,10 +32,46 @@
             <form id="migration-form">
                 <div class="form-group">
                     <label for="database_id">Notion Datenbank-ID:</label>
-                    <input type="text" id="database_id" name="database_id"
-                           placeholder="Notion-Datenbank-ID oder Share-URL"
-                           class="form-control" required>
-                    <small>Datenbank-ID oder Notion-Share-URL (ID wird automatisch extrahiert)</small>
+                    <div class="input-with-action">
+                        <input type="text" id="database_id" name="database_id"
+                               placeholder="Notion-Datenbank-ID oder Share-URL"
+                               class="form-control" required>
+                        <button type="button" id="onenote-db-toggle" class="btn btn-secondary btn-sm">+ Neue DB</button>
+                    </div>
+                    <small>ID oder Notion-Share-URL eingeben &mdash; oder neue Datenbank mit passendem Schema erstellen.
+                        <a href="#" class="schema-toggle" data-target="onenote-schema-panel">Schema anzeigen</a>
+                    </small>
+                    <div id="onenote-schema-panel" class="schema-panel">
+                        <div class="schema-panel-inner">
+                            <div class="schema-props">
+                                <span class="schema-prop"><strong>Name</strong> <code>title</code></span>
+                                <span class="schema-prop"><strong>Section</strong> <code>select</code></span>
+                                <span class="schema-prop"><strong>SectionGroup</strong> <code>select</code></span>
+                                <span class="schema-prop"><strong>Notebook</strong> <code>rich_text</code></span>
+                                <span class="schema-prop"><strong>OneNotePageId</strong> <code>rich_text</code></span>
+                                <span class="schema-prop"><strong>SourceURL</strong> <code>url</code></span>
+                                <span class="schema-prop"><strong>LastEditedUtc</strong> <code>date</code></span>
+                            </div>
+                            <p class="schema-hint">Fehlende Properties werden automatisch erg&auml;nzt.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="onenote-db-create-panel" class="db-create-panel hidden">
+                    <div class="db-create-form">
+                        <div class="form-group">
+                            <label for="onenote-db-title">Datenbank-Name:</label>
+                            <input type="text" id="onenote-db-title" class="form-control db-create-title"
+                                   value="OneNote Import" placeholder="z.B. OneNote Import">
+                        </div>
+                        <div class="form-group">
+                            <label for="onenote-db-parent">Eltern-Seite (Notion Page-ID oder URL):</label>
+                            <input type="text" id="onenote-db-parent" class="form-control db-create-parent"
+                                   placeholder="Notion-Seiten-ID oder Share-URL">
+                            <small>Die Seite, unter der die neue Datenbank erstellt wird.</small>
+                        </div>
+                        <button type="button" class="btn btn-primary db-create-btn">Datenbank erstellen</button>
+                    </div>
                 </div>
                 <div class="action-row">
                     <button type="submit" id="onenote-submit-btn" class="btn btn-success btn-large">Migration starten</button>
@@ -79,6 +115,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Notion-ID-Feld: URL oder rohe ID akzeptieren
     window.app.bindNotionIdField(document.getElementById('database_id'));
+
+    // DB-Erstellen-Panel initialisieren
+    window.app.initDbCreatePanel(
+        document.getElementById('onenote-db-toggle'),
+        document.getElementById('onenote-db-create-panel'),
+        'onenote',
+        document.getElementById('database_id')
+    );
 
     if (prefillSiteUrl) {
         document.getElementById('site_url').value = prefillSiteUrl;
