@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="🧠 Automatisierte Migration von Microsoft 365 (Planner, OneNote) zu Notion. Unterstützt Rich-Content, Bilder, Tasks via CLI und Web-GUI.">
+    <meta name="description" content="🧠 Automatisierte Migration von Microsoft 365 (Planner, OneNote) zu Notion. CLI, Web-GUI und Docker-Support mit Live-Fortschritt.">
     <title>move2notion - Microsoft zu Notion Migration Suite</title>
     <link rel="stylesheet" href="assets/style.css">
 </head>
@@ -14,8 +14,8 @@
             <h1>🧠 move2notion</h1>
             <p class="tagline">Automatisierte Migration von Microsoft 365 zu Notion</p>
             <p class="description">
-                Migriere deine Daten aus Microsoft Planner und OneNote in strukturierte Notion-Datenbanken.<br>
-                Mit Rich-Content-Support, Bildern, Tasks und automatischer Synchronisation.
+                Migriere deine Daten aus Microsoft Planner und OneNote in strukturierte Notion-Datenbanken.
+                Mit Rich-Content-Support, Bildern, Live-Fortschritt und Docker-Support.
             </p>
             <div class="cta-buttons">
                 <a href="https://github.com/LOUPZ-DE/move2notion" class="btn btn-primary" target="_blank">
@@ -28,6 +28,7 @@
                     📦 Quick Start
                 </a>
             </div>
+            <p class="version-badge">v0.9.3 &mdash; <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/CHANGELOG.md" target="_blank">Changelog</a></p>
         </header>
 
         <!-- Features Section -->
@@ -37,22 +38,32 @@
                 <div class="feature-card">
                     <div class="feature-icon">📋</div>
                     <h3>Planner Migration</h3>
-                    <p>Migriere Microsoft Planner Tasks mit allen Metadaten, Personen-Zuweisungen und Status-Tracking.</p>
+                    <p>Migriere Microsoft Planner Tasks mit allen Metadaten, Personen-Zuweisungen, Checklisten und Status-Tracking.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">📓</div>
                     <h3>OneNote Migration</h3>
-                    <p>Rich-Content-Support für Überschriften, Listen, Tabellen, Bilder, Code-Blöcke und Formatierungen.</p>
+                    <p>Rich-Content-Support: Überschriften, Listen, Tabellen, Bilder, Code-Blöcke, To-Dos und Formatierungen.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🔍</div>
+                    <h3>Overview-Dashboard</h3>
+                    <p>Alle M365-Gruppen, Notebooks und Planner-Pläne auf einen Blick. Direkte Migration per Klick.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">🌐</div>
-                    <h3>Web-GUI</h3>
-                    <p>Benutzerfreundliche Weboberfläche mit OAuth-Authentifizierung und Live-Fortschrittsanzeige.</p>
+                    <h3>Web-GUI mit Live-Fortschritt</h3>
+                    <p>Weboberfläche mit OAuth, Echtzeit-Fortschrittsanzeige via SSE und interaktiver Notebook-Auswahl.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">⚡</div>
                     <h3>CLI-Tools</h3>
-                    <p>Mächtige Kommandozeilen-Tools für Batch-Verarbeitung und Automatisierung.</p>
+                    <p>Kommandozeilen-Tools für Batch-Verarbeitung, Automatisierung und Scripting.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🐳</div>
+                    <h3>Docker-ready</h3>
+                    <p>Ein Befehl zum Starten. Produktionsreif mit gunicorn, Healthcheck und Auto-Restart.</p>
                 </div>
                 <div class="feature-card">
                     <div class="feature-icon">🔄</div>
@@ -60,9 +71,9 @@
                     <p>Sichere Resume-Funktionalität mit Checksummen. Fehler beheben und einfach neu starten.</p>
                 </div>
                 <div class="feature-card">
-                    <div class="feature-icon">🎨</div>
-                    <h3>Rich-Content</h3>
-                    <p>Bilder, Tabellen, To-Dos, Formatierungen und Attachments werden korrekt importiert.</p>
+                    <div class="feature-icon">🔐</div>
+                    <h3>Flexible Authentifizierung</h3>
+                    <p>Delegated (Device Code / OAuth) oder Application Mode (Client Credentials) für Server-Szenarien.</p>
                 </div>
             </div>
         </section>
@@ -74,6 +85,10 @@
                 <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/README.md" class="link-card" target="_blank">
                     <h3>📖 README</h3>
                     <p>Vollständige Dokumentation und Übersicht</p>
+                </a>
+                <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/documentation/OVERVIEW.md" class="link-card" target="_blank">
+                    <h3>🔍 Overview-Tool</h3>
+                    <p>M365-Gruppen, Notebooks und Plans entdecken</p>
                 </a>
                 <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/documentation/PLANNER.md" class="link-card" target="_blank">
                     <h3>📋 Planner Migration</h3>
@@ -87,14 +102,25 @@
                     <h3>🌐 Web-GUI</h3>
                     <p>Anleitung zur Web-Oberfläche</p>
                 </a>
+                <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/documentation/APPLICATION_PERMISSIONS.md" class="link-card" target="_blank">
+                    <h3>🔐 Application Permissions</h3>
+                    <p>Server-zu-Server ohne User-Login</p>
+                </a>
             </div>
         </section>
 
         <!-- Installation -->
         <section class="installation">
             <h2>📦 Installation</h2>
-            <div class="code-block">
-                <pre><code># Repository klonen
+
+            <div class="install-tabs">
+                <button class="tab-btn active" data-tab="python">Python</button>
+                <button class="tab-btn" data-tab="docker">Docker</button>
+            </div>
+
+            <div class="tab-content active" id="tab-python">
+                <div class="code-block">
+                    <pre><code># Repository klonen
 git clone https://github.com/LOUPZ-DE/move2notion.git
 cd move2notion
 
@@ -107,7 +133,27 @@ pip install -r requirements.txt
 
 # Konfiguration
 cp .env.example .env
-# .env mit deinen Zugangsdaten füllen</code></pre>
+# .env mit deinen Zugangsdaten füllen
+
+# Web-GUI starten
+cd web && python app.py</code></pre>
+                </div>
+            </div>
+
+            <div class="tab-content" id="tab-docker">
+                <div class="code-block">
+                    <pre><code># Image bauen
+docker build -t move2notion .
+
+# Container starten (.env muss existieren)
+docker run -d --name move2notion \
+  --restart unless-stopped \
+  --env-file .env \
+  -p 8080:8080 \
+  move2notion
+
+# Öffne http://localhost:8080</code></pre>
+                </div>
             </div>
         </section>
 
@@ -115,11 +161,24 @@ cp .env.example .env
         <footer>
             <p>
                 Made with ❤️ by <a href="https://loupz.de">LOUPZ GmbH & Co. KG</a><br>
-                <a href="https://github.com/LOUPZ-DE/move2notion" target="_blank">GitHub</a> • 
-                <a href="https://github.com/LOUPZ-DE/move2notion/issues" target="_blank">Issues</a> • 
-                <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/LICENSE" target="_blank">CC BY-NC 4.0 License</a>
+                <a href="https://github.com/LOUPZ-DE/move2notion" target="_blank">GitHub</a> &bull;
+                <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/CHANGELOG.md" target="_blank">Changelog</a> &bull;
+                <a href="https://github.com/LOUPZ-DE/move2notion/issues" target="_blank">Issues</a> &bull;
+                <a href="https://github.com/LOUPZ-DE/move2notion/blob/main/LICENSE" target="_blank">CC BY-NC 4.0</a>
             </p>
         </footer>
     </div>
+
+    <script>
+        // Tab-Switching für Installation
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+            });
+        });
+    </script>
 </body>
 </html>

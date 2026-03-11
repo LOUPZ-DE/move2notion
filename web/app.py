@@ -18,6 +18,36 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.auth import AuthManager, AuthConfig
 from web.task_manager import task_manager, TaskStatus, emit_progress, emit_complete
 
+def print_banner(port: int):
+    """Startup-Banner mit ASCII-Art ausgeben."""
+    VERSION = "0.9.3"
+    C = "\033[36m"    # Cyan
+    B = "\033[1;34m"  # Bold Blue
+    W = "\033[1;37m"  # Bold White
+    G = "\033[32m"    # Green
+    D = "\033[2m"     # Dim
+    R = "\033[0m"     # Reset
+
+    banner = f"""
+{C}  ___  ___                 ___  {B}  _   _       _   _             {R}
+{C} |  \\/  |                |__ \\ {B} | \\ | |     | | (_)            {R}
+{C} | .  . | _____   _____    ) |{B} |  \\| | ___ | |_ _  ___  _ __  {R}
+{C} | |\\/| |/ _ \\ \\ / / _ \\  / / {B} | . ` |/ _ \\| __| |/ _ \\| '_ \\ {R}
+{C} | |  | | (_) \\ V /  __/ / /_ {B} | |\\  | (_) | |_| | (_) | | | |{R}
+{C} \\_|  |_/\\___/ \\_/ \\___||____|{B} \\_| \\_/\\___/ \\__|_|\\___/|_| |_|{R}
+
+{W}  Microsoft-zu-Notion Migration Suite{R}
+{D}  v{VERSION} — LOUPZ GmbH & Co. KG{R}
+
+{G}  ✓ Server läuft auf http://localhost:{port}{R}
+{D}  Strg+C zum Beenden{R}
+"""
+    print(banner)
+
+
+# Banner beim Start ausgeben (funktioniert mit python app.py und gunicorn)
+print_banner(int(os.getenv("FLASK_PORT", 8080)))
+
 # Flask-App initialisieren
 app = Flask(__name__)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))

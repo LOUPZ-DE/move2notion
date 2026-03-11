@@ -4,7 +4,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC_BY--NC_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
-[![Changelog](https://img.shields.io/badge/Changelog-v0.9.2-orange.svg)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/Changelog-v0.9.3-orange.svg)](CHANGELOG.md)
 
 ---
 
@@ -78,6 +78,21 @@ python app.py
 - 🎨 **Responsive UI** für Desktop und Mobile
 
 📖 [Vollständige Anleitung](web/README.md) | [Quick Start](web/QUICKSTART.md)
+
+#### 🐳 Docker
+
+```bash
+# Image bauen
+docker build -t move2notion .
+
+# Container starten (.env muss existieren)
+docker run -d --name move2notion \
+  --env-file .env \
+  -p 8080:8080 \
+  move2notion
+
+# → http://localhost:8080
+```
 
 ---
 
@@ -187,28 +202,31 @@ Siehe [Application Permissions](documentation/APPLICATION_PERMISSIONS.md) für D
 ```
 ms_notion_migration/
 ├── core/                    # Gemeinsame Abstraktionen
-│   ├── auth.py             # MSAL + Notion (CLI + Web)
-│   ├── notion_client.py    # Notion API
-│   ├── ms_graph_client.py  # Microsoft Graph
-│   └── state_manager.py    # Idempotenz
+│   ├── auth.py             # MSAL + Notion (CLI + Web + Application)
+│   ├── notion_client.py    # Notion API mit Retry & Rate Limiting
+│   ├── ms_graph_client.py  # Microsoft Graph (OneNote, Planner, Groups)
+│   ├── state_manager.py    # Idempotenz via Checksummen
+│   └── utils.py            # Hilfsfunktionen
 │
-├── tools/                  # Migrationstools (CLI)
-│   ├── overview/          # Gruppen/Notebooks/Plans Discovery
-│   ├── planner_migration/
-│   └── onenote_migration/
+├── tools/                   # Migrationstools (CLI)
+│   ├── overview/            # M365-Gruppen/Notebooks/Plans Discovery
+│   ├── planner_migration/   # Planner → Notion
+│   └── onenote_migration/   # OneNote → Notion (HTML-Parser, Bilder)
 │
-├── web/                    # Flask Web-GUI
-│   ├── app.py             # Flask-Anwendung
-│   ├── templates/         # HTML-Templates
-│   ├── static/            # CSS & JavaScript
-│   ├── README.md          # Web-GUI Dokumentation
-│   └── QUICKSTART.md      # 5-Minuten-Setup
+├── web/                     # Flask Web-GUI
+│   ├── app.py              # Flask-Anwendung (Port 8080)
+│   ├── task_manager.py     # Background-Tasks mit SSE-Fortschritt
+│   ├── templates/          # HTML-Templates
+│   ├── static/             # CSS & JavaScript
+│   ├── README.md           # Web-GUI Dokumentation
+│   └── QUICKSTART.md       # 5-Minuten-Setup
 │
-└── documentation/          # Dokumentation
+└── documentation/           # Dokumentation
     ├── OVERVIEW.md
     ├── PLANNER.md
     ├── ONENOTE.md
-    └── WEB_GUI.md
+    ├── WEB_GUI.md
+    └── APPLICATION_PERMISSIONS.md
 ```
 
 ---

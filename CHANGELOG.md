@@ -5,6 +5,14 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/)
 und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.9.3] - 2026-03-11
+
+### Hinzugefügt
+- **Docker-Support**: Dockerfile mit gunicorn, Healthcheck und optimiertem Layer-Caching
+- `.dockerignore` für schlanke Images
+- **Startup-Banner**: Farbige ASCII-Art beim Serverstart (funktioniert mit Flask und gunicorn)
+- **Landingpage aktualisiert**: Neue Features (Overview, Docker, SSE, Auth-Modi), Doku-Links ergänzt, Python/Docker Install-Tabs
+
 ## [0.9.2] - 2026-03-10
 
 ### Hinzugefügt
