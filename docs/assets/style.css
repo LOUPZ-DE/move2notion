@@ -6,8 +6,8 @@
 }
 
 :root {
-    --primary-color: #0066cc;
-    --secondary-color: #5856d6;
+    --primary-color: #6366f1;
+    --secondary-color: #4f46e5;
     --bg-color: #ffffff;
     --text-color: #1d1d1f;
     --text-secondary: #6e6e73;
@@ -19,8 +19,8 @@
 
 @media (prefers-color-scheme: dark) {
     :root {
-        --primary-color: #0a84ff;
-        --secondary-color: #5e5ce6;
+        --primary-color: #818cf8;
+        --secondary-color: #6366f1;
         --bg-color: #1d1d1f;
         --text-color: #f5f5f7;
         --text-secondary: #86868b;
@@ -62,10 +62,10 @@ body {
 }
 
 .hero-icon {
-    width: 1em;
-    height: 1em;
-    vertical-align: -0.1em;
-    border-radius: 0.15em;
+    width: 1.2em;
+    height: 1.2em;
+    vertical-align: -0.15em;
+    border-radius: 0.2em;
 }
 
 .hero .tagline {
