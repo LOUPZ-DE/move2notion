@@ -26,19 +26,21 @@
                 <small>Datenbank-ID oder Notion-Share-URL (ID wird automatisch extrahiert)</small>
             </div>
 
-            <button type="submit" id="planner-submit-btn" class="btn btn-success btn-large">Migration starten</button>
+            <div class="action-row">
+                <button type="submit" id="planner-submit-btn" class="btn btn-success btn-large">Migration starten</button>
+                <span id="planner-phase" class="phase-label hidden">Initialisiere...</span>
+            </div>
         </form>
+
+        <div id="planner-progress-section" class="progress-inline hidden">
+            <div class="progress-bar">
+                <div id="planner-progress" class="progress-fill" style="width: 0%">0%</div>
+            </div>
+            <div id="planner-status-text" class="status-text">Warte auf Start...</div>
+        </div>
     </div>
 
-    <div id="planner-progress-section" class="hidden">
-        <h3>Migration</h3>
-        <div class="phase-indicator">
-            <span id="planner-phase" class="phase-label">Initialisiere...</span>
-        </div>
-        <div class="progress-bar">
-            <div id="planner-progress" class="progress-fill" style="width: 0%">0%</div>
-        </div>
-        <div id="planner-status-text" class="status-text">Warte auf Start...</div>
+    <div id="planner-log-section" class="hidden">
         <div id="planner-log-output" class="log-output"></div>
         <div id="planner-summary" class="migration-summary hidden"></div>
     </div>
@@ -71,6 +73,22 @@ document.addEventListener('DOMContentLoaded', function() {
         submitBtn.disabled = true;
         submitBtn.textContent = 'Migration laeuft...';
         progressSection.classList.remove('hidden');
+        document.getElementById('planner-log-section').classList.remove('hidden');
+
+        // Phase-Badge anzeigen
+        var phaseLabel = document.getElementById('planner-phase');
+        phaseLabel.classList.remove('hidden', 'phase-done', 'phase-error');
+        phaseLabel.textContent = 'Initialisiere...';
+
+        // Progress-Zustand zuruecksetzen
+        var progressBar = document.getElementById('planner-progress');
+        progressBar.style.width = '0%';
+        progressBar.textContent = '0%';
+        progressBar.classList.remove('progress-complete');
+        document.getElementById('planner-status-text').textContent = 'Warte auf Start...';
+        document.getElementById('planner-log-output').innerHTML = '';
+        document.getElementById('planner-summary').innerHTML = '';
+        document.getElementById('planner-summary').classList.add('hidden');
 
         try {
             var response = await fetch('/api/planner/migrate', {

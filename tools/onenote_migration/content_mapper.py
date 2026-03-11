@@ -187,30 +187,47 @@ class ContentMapper:
                     return None
 
             # 7. Blöcke hinzufügen (Bilder sind bereits INLINE!)
+            expected_blocks = 0
+            failed_blocks = 0
             if blocks:
-                print(f"[📝] {len(blocks)} Blöcke gefunden (inkl. Bilder)")
-                # Debug: Zeige Block-Typen
-                block_types = [b.get('type') for b in blocks]
-                print(f"[📝] Block-Typen: {block_types}")
-                
+                img_count = sum(1 for b in blocks if b.get("type") == "image")
+                print(f"[📝] {len(blocks)} Blöcke gefunden ({img_count} Bilder)")
+
                 # FAIL-SAFE: Validiere alle Blöcke vor dem Senden
                 validated_blocks = self._validate_blocks(blocks)
-                print(f"[📝] {len(validated_blocks)} Blöcke nach Validierung")
-                
-                # Bei Updates: Lösche alte Blöcke erst (falls möglich)
+                expected_blocks += len(validated_blocks)
+
                 if existing_page_id:
                     print(f"[🔄] Update-Modus: Füge {len(validated_blocks)} neue Blöcke hinzu")
-                
-                self.notion.append_blocks(notion_page_id, validated_blocks)
+
+                result = self.notion.append_blocks(notion_page_id, validated_blocks)
+                failed_blocks += result.get("_failed_blocks", 0)
             else:
                 print(f"[⚠] Keine Blöcke zum Hinzufügen")
 
             # 8. Tabellen als echte Table-Blöcke hinzufügen
             if tables:
+                expected_blocks += len(tables)
                 for table in tables:
                     append_table(self.notion, notion_page_id, table)
 
-            print(f"[✅] Page importiert: {page_title}")
+            # 9. Post-Import-Verifikation
+            try:
+                actual_blocks = self.notion.get_all_block_children(notion_page_id)
+                actual_count = len(actual_blocks)
+                actual_images = sum(1 for b in actual_blocks if b.get("type") == "image")
+                # expected_blocks zählt validierte Blöcke + Tabellen;
+                # Tabellen expandieren zu table + table_rows, daher >=
+                if failed_blocks > 0:
+                    print(f"[⚠] Verifikation: {actual_count} Blöcke in Notion "
+                          f"({actual_images} Bilder), {failed_blocks} Blöcke übersprungen")
+                else:
+                    print(f"[✅] Verifikation: {actual_count} Blöcke in Notion ({actual_images} Bilder)")
+            except Exception as e:
+                print(f"[⚠] Verifikation fehlgeschlagen: {e}")
+
+            status = "⚠" if failed_blocks > 0 else "✅"
+            print(f"[{status}] Page importiert: {page_title}")
             return notion_page_id
 
         except Exception as e:
@@ -274,22 +291,26 @@ class ContentMapper:
             elif prop_type == "url":
                 properties["OneNotePageId"] = {"url": page_id}
         
-        # Section - nur wenn Property existiert
-        if section and "Section" in db_props:
-            prop_type = db_props["Section"].get("type")
-            print(f"[🔍] Section-Property gefunden: Type={prop_type}, Value={section}")
+        # Section/Bereich - flexibles Matching (Section oder Bereich)
+        section_key = next((k for k in db_props if k in ("Section", "Bereich")), None)
+        if section and section_key:
+            prop_type = db_props[section_key].get("type")
+            print(f"[🔍] Section-Property '{section_key}' gefunden: Type={prop_type}, Value={section}")
             if prop_type == "select":
-                properties["Section"] = {"select": {"name": section}}
-                print(f"[✅] Section gesetzt: {section}")
+                properties[section_key] = {"select": {"name": section}}
+                print(f"[✅] {section_key} gesetzt: {section}")
             elif prop_type == "rich_text":
-                properties["Section"] = {
+                properties[section_key] = {
                     "rich_text": [{"type": "text", "text": {"content": section}}]
                 }
-                print(f"[✅] Section gesetzt (rich_text): {section}")
+                print(f"[✅] {section_key} gesetzt (rich_text): {section}")
+            elif prop_type == "multi_select":
+                properties[section_key] = {"multi_select": [{"name": section}]}
+                print(f"[✅] {section_key} gesetzt (multi_select): {section}")
             else:
-                print(f"[⚠] Section-Property ist nicht vom Typ 'select', sondern '{prop_type}'")
+                print(f"[⚠] {section_key}-Property ist nicht vom Typ 'select', sondern '{prop_type}'")
         elif section:
-            print(f"[⚠] Section-Property existiert nicht in Datenbank (section_name='{section}')")
+            print(f"[⚠] Weder 'Section' noch 'Bereich' Property existiert in Datenbank (section_name='{section}')")
         
         # SectionGroup - nur wenn Property existiert (für verschachtelte Section Groups)
         if section_group and "SectionGroup" in db_props:
@@ -337,28 +358,63 @@ class ContentMapper:
         
         return properties
 
+    @staticmethod
+    def _is_valid_notion_url(url: str) -> bool:
+        """Prüft ob eine URL von der Notion API akzeptiert wird."""
+        if not url:
+            return False
+        return url.startswith("http://") or url.startswith("https://") or url.startswith("onenote:")
+
+    def _sanitize_links_in_rich_text(self, rich_text: list) -> list:
+        """Entfernt ungültige Links aus rich_text-Elementen.
+
+        Notion lehnt den gesamten Block-Batch ab wenn ein Link eine
+        ungültige URL enthält (z.B. file:///, mailto:, Netzwerkpfade).
+        """
+        sanitized = []
+        for rt in rich_text:
+            if rt.get("type") == "text":
+                link = rt.get("text", {}).get("link")
+                if link and not self._is_valid_notion_url(link.get("url", "")):
+                    # Link entfernen, Original-URL als Text anhängen
+                    bad_url = link["url"]
+                    original_text = rt["text"].get("content", "")
+                    rt = dict(rt)
+                    rt["text"] = dict(rt["text"])
+                    rt["text"].pop("link", None)
+                    rt["text"]["content"] = f"{original_text} [Link: {bad_url}]"
+                    print(f"[🔗] Ungültigen Link entfernt: {bad_url[:80]}")
+            sanitized.append(rt)
+        return sanitized
+
     def _validate_blocks(self, blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
-        Validiere alle Blöcke und stelle sicher dass rich_text <= 2000 Zeichen.
-        
+        Validiere alle Blöcke vor dem Senden an Notion.
+
+        - rich_text <= 2000 Zeichen (Split bei Überlänge)
+        - Ungültige Links entfernen (file:///, mailto:, etc.)
+
         FAIL-SAFE gegen Notion API Validierungsfehler.
         """
         validated = []
-        
+
         for block in blocks:
             block_type = block.get("type")
             if not block_type:
                 continue
-            
+
             # WICHTIG: Image- und File-Blöcke haben kein rich_text!
             if block_type in ["image", "file", "pdf", "video", "audio"]:
                 # Diese Blöcke unverändert durchlassen
                 validated.append(block)
                 continue
-            
+
             # Block-Content holen
             content = block.get(block_type, {})
             rich_text = content.get("rich_text", [])
+
+            # Links validieren
+            rich_text = self._sanitize_links_in_rich_text(rich_text)
             
             # Validiere jedes rich_text-Element
             new_rich_text = []

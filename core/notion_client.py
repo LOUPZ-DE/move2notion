@@ -190,26 +190,63 @@ class NotionClient:
             self._make_request("PATCH", f"/blocks/{block_id}", json=data)
     
     def append_blocks(self, block_id: str, children: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Blöcke an bestehende Seite anhängen."""
+        """Blöcke an bestehende Seite anhängen.
+
+        Bei Batch-Fehlern wird der Batch halbiert und erneut versucht (Bisection).
+        So wird der fehlerhafte Block isoliert und übersprungen, statt den
+        gesamten Batch zu verlieren.
+
+        Returns:
+            Dict mit 'results' vom letzten erfolgreichen Batch,
+            plus 'failed_blocks' (int) und 'total_blocks' (int).
+        """
         url = f"/blocks/{block_id}/children"
         result = None
-        failed_batches = 0
-        total_batches = (len(children) + 49) // 50
+        failed_blocks = 0
+        total_blocks = len(children)
 
-        # Blöcke in Batches von 50 senden (Notion-Limit)
-        for i in range(0, len(children), 50):
-            batch = children[i:i+50]
+        def _send_batch(batch: List[Dict]) -> bool:
+            """Batch senden. Bei Fehler: halbieren und einzeln retrien."""
+            nonlocal result, failed_blocks
             try:
                 result = self._make_request("PATCH", url, json={"children": batch})
+                time.sleep(0.12)
+                return True
             except Exception as e:
-                failed_batches += 1
-                batch_num = i // 50 + 1
-                print(f"[⚠] Batch {batch_num}/{total_batches} fehlgeschlagen ({len(batch)} Blöcke): {e}")
-            time.sleep(0.12)  # Rate limiting
+                if len(batch) == 1:
+                    # Einzelner Block fehlgeschlagen — überspringen und loggen
+                    failed_blocks += 1
+                    btype = batch[0].get("type", "?")
+                    content_preview = ""
+                    if btype in batch[0]:
+                        rt = batch[0][btype].get("rich_text", [])
+                        texts = [t.get("text", {}).get("content", "")[:40] for t in rt[:2] if t.get("type") == "text"]
+                        content_preview = " ".join(texts)
+                    print(f"[⛔] Block übersprungen ({btype}): {e}")
+                    if content_preview:
+                        print(f"     Inhalt: \"{content_preview}...\"")
+                    return False
 
-        if failed_batches:
-            print(f"[⚠] {failed_batches} von {total_batches} Batches fehlgeschlagen")
-        return result or {}
+                # Batch halbieren und beide Hälften versuchen
+                mid = len(batch) // 2
+                print(f"[🔄] Batch ({len(batch)} Blöcke) fehlgeschlagen, halbiere... ({e})")
+                _send_batch(batch[:mid])
+                time.sleep(0.12)
+                _send_batch(batch[mid:])
+                return False
+
+        # Blöcke in Batches von 50 senden (Notion-Limit)
+        for i in range(0, total_blocks, 50):
+            batch = children[i:i+50]
+            _send_batch(batch)
+
+        if failed_blocks:
+            print(f"[⚠] {failed_blocks} von {total_blocks} Blöcken fehlgeschlagen (übersprungen)")
+
+        result = result or {}
+        result["_failed_blocks"] = failed_blocks
+        result["_total_blocks"] = total_blocks
+        return result
 
     def find_page_by_property(self, database_id: str, property_name: str, property_value: str) -> Optional[str]:
         """Seite anhand einer Property finden (nur ID)."""

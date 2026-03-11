@@ -218,7 +218,7 @@ class MSGraphClient:
     def get_page_content(self, site_id: str, page_id: str) -> bytes:
         """HTML-Inhalt einer OneNote-Seite abrufen."""
         url = f"{self.BASE_URL}/sites/{site_id}/onenote/pages/{page_id}/content"
-        response = requests.get(url, headers=self.auth.microsoft.headers)
+        response = requests.get(url, headers=self._get_headers())
 
         if not response.ok:
             raise MSGraphAPIError(f"Page content fetch failed: {response.status_code} - {response.text}")
@@ -228,7 +228,7 @@ class MSGraphClient:
     def get_resource_content(self, site_id: str, resource_id: str) -> bytes:
         """Binärinhalt einer OneNote-Ressource abrufen."""
         url = f"{self.BASE_URL}/sites/{site_id}/onenote/resources/{resource_id}/content"
-        response = requests.get(url, headers=self.auth.microsoft.headers)
+        response = requests.get(url, headers=self._get_headers())
 
         if not response.ok:
             raise MSGraphAPIError(f"Resource fetch failed: {response.status_code} - {response.text}")

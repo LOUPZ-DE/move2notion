@@ -316,7 +316,7 @@ def _run_onenote_migration(task, site_id, notebook_ids, database_id, session_id)
         from tools.onenote_migration.content_mapper import ContentMapper
 
         ms_client = MSGraphClient(web_auth_manager, session_id=session_id)
-        notion_client = NotionClient()
+        notion_client = NotionClient(auth_manager_instance=web_auth_manager)
         content_mapper = ContentMapper(notion_client, ms_client, site_id)
 
         # Phase 1: Notebooks laden
@@ -347,6 +347,7 @@ def _run_onenote_migration(task, site_id, notebook_ids, database_id, session_id)
                 sec_name = section.get("displayName", "Unbekannt")
                 try:
                     pages = ms_client.list_pages_for_section(site_id, section["id"])
+                    emit_progress(task, task.progress, f"Section '{sec_name}': {len(pages)} Seiten")
                 except Exception as e:
                     emit_progress(task, 0, f"Seiten fuer '{sec_name}' fehlgeschlagen: {e}", log_type="error")
                     pages = []
@@ -393,6 +394,8 @@ def _run_onenote_migration(task, site_id, notebook_ids, database_id, session_id)
 
                     if notion_page_id:
                         task.success_count += 1
+                        # Bildzaehlung aus den Server-Logs nicht verfuegbar,
+                        # aber Seitenname + Erfolg reicht fuer GUI
                         emit_progress(task, progress,
                             f"[{processed}/{total_pages}] Importiert: {page_title}",
                             log_type="success")
@@ -542,7 +545,7 @@ def _run_planner_migration(task, plan_id, database_id, session_id):
 
         # 7. Notion-Client und Mapper erstellen
         emit_progress(task, 57, "Bereite Datenbank vor...", phase="DB vorbereiten")
-        notion_client = NotionClient()
+        notion_client = NotionClient(auth_manager_instance=web_auth_manager)
         notion_mapper = create_notion_mapper(notion_client)
 
         # 8. Datenbank vorbereiten
@@ -684,6 +687,7 @@ def not_found(error):
 def internal_error(error):
     """500-Fehlerseite."""
     return render_template("error.html", error="Interner Serverfehler"), 500
+
 
 
 if __name__ == "__main__":

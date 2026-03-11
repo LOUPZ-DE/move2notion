@@ -113,8 +113,13 @@ SSEMigrationClient.prototype.start = function(taskId) {
                 self._updatePhase(data.phase);
             }
         } else if (data.type === 'complete') {
+            var isSuccess = data.status === 'completed';
             self._updateProgress(100, 'Migration abgeschlossen');
-            self._updatePhase(data.status === 'completed' ? 'Abgeschlossen' : 'Fehlgeschlagen');
+            self._updatePhase(isSuccess ? 'Abgeschlossen' : 'Fehlgeschlagen');
+            // Phase-Badge Farbe setzen
+            if (self.phaseLabel) {
+                self.phaseLabel.classList.add(isSuccess ? 'phase-done' : 'phase-error');
+            }
             self._showSummary(data);
             self.eventSource.close();
             self.onComplete(data);

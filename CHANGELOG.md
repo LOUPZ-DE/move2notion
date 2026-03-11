@@ -5,6 +5,36 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/)
 und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.9.4] - 2026-03-11
+
+### Hinzugefügt
+- **Farbübernahme aus OneNote**: CSS-Textfarben und Hintergrundfarben werden auf Notion-Annotationen gemappt
+  - Unterstützt benannte Farben (`red`, `green`), Hex (`#FF0000`), `rgb()`-Werte
+  - Mapping auf Notions 9 Farben: red, green, blue, orange, yellow, purple, pink, brown, gray (+ `*_background`)
+  - Schwarz/Weiß/sehr helle Farben werden ignoriert (Standard-Textfarbe in Notion)
+- **Bisection-Retry bei Notion-Blockfehlern**: Schlägt ein Batch von 50 Blöcken fehl, wird er halbiert und erneut versucht — so wird nur der fehlerhafte Block übersprungen statt des gesamten Batches
+- **Link-Validierung**: Ungültige URLs (`file:///`, `mailto:`, Netzwerkpfade) werden vor dem Senden an Notion entfernt und als `[Link: ...]` im Text erhalten
+  - Zweistufig: Erkennung im HTML-Parser (`html_parser.py`) und als Safety-Net in `_validate_blocks()` (`content_mapper.py`)
+- **Post-Import-Verifikation**: Nach jeder importierten Seite wird die tatsächliche Blockanzahl in Notion geprüft und mit der erwarteten verglichen
+- **Section-Property flexibles Matching**: Unterstützt sowohl "Section" als auch "Bereich" als Property-Name in der Notion-Datenbank, inkl. `multi_select`-Typ
+
+### Verbessert
+- **Kompakteres Migrations-UI**: Phase-Badge sitzt nun inline neben dem Start-Button statt in separatem Block
+  - "Migration"-Überschrift entfernt
+  - Progressbar und Statustext direkt im Formular-Card eingebettet (mit Trennlinie)
+  - Log-Output als eigenständiger Bereich unter der Karte
+  - Phase-Badge wechselt Farbe: blau (pulsierend) → grün (Erfolg) / rot (Fehler)
+- `append_blocks` gibt jetzt `_failed_blocks` und `_total_blocks` im Result zurück
+- MS Graph `get_page_content` und `get_resource_content` nutzen `_get_headers()` statt `auth.microsoft.headers` (Web-kompatibel)
+- `resource_handler.py` nutzt `_get_headers()` für Web-Session-Kompatibilität
+- Reduziertes Debug-Logging bei Section-/Page-Auflistung
+- `NotionClient` wird in Web-Migrationen mit `auth_manager_instance` initialisiert
+
+### Behoben
+- Fehlende Bilder bei OneNote-Import wenn ein ungültiger Link (`file:///`) im selben Batch war — der gesamte Batch (inkl. Bilder) wurde verworfen
+- Progressbar hatte `min-width: 48px` gefehlt (Prozentanzeige bei 0% abgeschnitten)
+- `main` CSS-Selektor zu `main.container` korrigiert
+
 ## [0.9.3] - 2026-03-11
 
 ### Hinzugefügt

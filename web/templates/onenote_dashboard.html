@@ -37,20 +37,22 @@
                            class="form-control" required>
                     <small>Datenbank-ID oder Notion-Share-URL (ID wird automatisch extrahiert)</small>
                 </div>
-                <button type="submit" id="onenote-submit-btn" class="btn btn-success btn-large">Migration starten</button>
+                <div class="action-row">
+                    <button type="submit" id="onenote-submit-btn" class="btn btn-success btn-large">Migration starten</button>
+                    <span id="onenote-phase" class="phase-label hidden">Initialisiere...</span>
+                </div>
             </form>
+
+            <div id="progress-section" class="progress-inline hidden">
+                <div class="progress-bar">
+                    <div id="onenote-progress" class="progress-fill" style="width: 0%">0%</div>
+                </div>
+                <div id="onenote-status-text" class="status-text">Warte auf Start...</div>
+            </div>
         </div>
     </div>
 
-    <div id="progress-section" class="hidden">
-        <h3>Migration</h3>
-        <div class="phase-indicator">
-            <span id="onenote-phase" class="phase-label">Initialisiere...</span>
-        </div>
-        <div class="progress-bar">
-            <div id="onenote-progress" class="progress-fill" style="width: 0%">0%</div>
-        </div>
-        <div id="onenote-status-text" class="status-text">Warte auf Start...</div>
+    <div id="onenote-log-section" class="hidden">
         <div id="onenote-log-output" class="log-output"></div>
         <div id="onenote-summary" class="migration-summary hidden"></div>
     </div>
@@ -164,6 +166,22 @@ document.addEventListener('DOMContentLoaded', function() {
         onenoteSubmitBtn.disabled = true;
         onenoteSubmitBtn.textContent = 'Migration laeuft...';
         progressSection.classList.remove('hidden');
+        document.getElementById('onenote-log-section').classList.remove('hidden');
+
+        // Phase-Badge anzeigen
+        var phaseLabel = document.getElementById('onenote-phase');
+        phaseLabel.classList.remove('hidden', 'phase-done', 'phase-error');
+        phaseLabel.textContent = 'Initialisiere...';
+
+        // Progress-Zustand zuruecksetzen
+        var progressBar = document.getElementById('onenote-progress');
+        progressBar.style.width = '0%';
+        progressBar.textContent = '0%';
+        progressBar.classList.remove('progress-complete');
+        document.getElementById('onenote-status-text').textContent = 'Warte auf Start...';
+        document.getElementById('onenote-log-output').innerHTML = '';
+        document.getElementById('onenote-summary').innerHTML = '';
+        document.getElementById('onenote-summary').classList.add('hidden');
 
         try {
             var response = await fetch('/api/onenote/migrate', {

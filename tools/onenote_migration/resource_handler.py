@@ -133,8 +133,8 @@ class ResourceHandler:
             (Daten, Content-Type) oder (None, None) bei Fehler
         """
         try:
-            # MS Graph Auth-Header
-            headers = self.ms_graph.auth.microsoft.headers
+            # MS Graph Auth-Header (Web-kompatibel via _get_headers)
+            headers = self.ms_graph._get_headers()
             
             response = requests.get(url, headers=headers, timeout=30)
             response.raise_for_status()

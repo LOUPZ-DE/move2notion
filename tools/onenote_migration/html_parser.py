@@ -48,17 +48,35 @@ def extract_page_id_from_link(href: str) -> Optional[str]:
     return None
 
 
+def is_notion_valid_url(href: str) -> bool:
+    """Prüft ob eine URL von der Notion API akzeptiert wird.
+
+    Notion akzeptiert nur http/https URLs. file:///, mailto:, ftp://,
+    Netzwerkpfade (\\\\server) und andere Schemata werden abgelehnt
+    und lassen den gesamten Block-Batch fehlschlagen.
+    """
+    if not href:
+        return False
+    h = href.strip()
+    return h.startswith("http://") or h.startswith("https://") or h.startswith("onenote:")
+
+
 def process_onenote_link(href: str) -> Tuple[str, str]:
     """
     Verarbeitet einen Link und markiert OneNote-interne Links.
-    
+
     Returns:
-        (url, suffix) - URL bleibt erhalten, suffix wird an Text angehängt
+        (url, suffix) - URL bleibt erhalten, suffix wird an Text angehängt.
+        Gibt (None, suffix) zurück wenn die URL ungültig ist.
     """
     if is_onenote_internal_link(href):
         # OneNote-interner Link: Original-URL behalten, aber markieren
         return href, INCOMPLETE_LINK_MARKER
-    
+
+    # Ungültige URLs (file:///, mailto:, Netzwerkpfade etc.) entfernen
+    if not is_notion_valid_url(href):
+        return None, f" [Link: {href}]"
+
     # Normaler externer Link
     return href, ""
 
@@ -187,37 +205,133 @@ def build_rich_text(node: Tag, exclude_nested_lists: bool = False) -> List[Dict[
     """
     parts: List[Dict[str, Any]] = []
     
-    def parse_style_annotations(style_str: str) -> Dict[str, bool]:
-        """Parse CSS style string und extrahiere Formatierungs-Annotations."""
+    def _css_color_to_notion(css_value: str) -> Optional[str]:
+        """Mappt einen CSS-Farbwert auf einen Notion-Farbnamen.
+
+        Notion kennt: gray, brown, orange, yellow, green, blue, purple, pink, red.
+        Plus Hintergrundfarben: *_background.
+        """
+        if not css_value:
+            return None
+        v = css_value.strip().lower()
+
+        # Benannte CSS-Farben → Notion
+        name_map = {
+            "red": "red", "darkred": "red", "crimson": "red", "firebrick": "red",
+            "green": "green", "darkgreen": "green", "lime": "green", "limegreen": "green",
+            "forestgreen": "green", "seagreen": "green", "olive": "green",
+            "blue": "blue", "darkblue": "blue", "navy": "blue", "royalblue": "blue",
+            "mediumblue": "blue", "dodgerblue": "blue",
+            "orange": "orange", "darkorange": "orange", "orangered": "orange",
+            "yellow": "yellow", "gold": "yellow", "khaki": "yellow",
+            "purple": "purple", "darkviolet": "purple", "indigo": "purple",
+            "magenta": "purple", "mediumorchid": "purple", "blueviolet": "purple",
+            "pink": "pink", "hotpink": "pink", "deeppink": "pink",
+            "lightpink": "pink", "fuchsia": "pink",
+            "brown": "brown", "saddlebrown": "brown", "sienna": "brown",
+            "maroon": "brown", "chocolate": "brown",
+            "gray": "gray", "grey": "gray", "darkgray": "gray", "darkgrey": "gray",
+            "dimgray": "gray", "dimgrey": "gray", "slategray": "gray",
+        }
+        if v in name_map:
+            return name_map[v]
+
+        # Hex-Farben → RGB → nächste Notion-Farbe
+        r, g, b = None, None, None
+        if v.startswith("#"):
+            hexval = v[1:]
+            if len(hexval) == 3:
+                hexval = hexval[0]*2 + hexval[1]*2 + hexval[2]*2
+            if len(hexval) == 6:
+                r, g, b = int(hexval[0:2], 16), int(hexval[2:4], 16), int(hexval[4:6], 16)
+        elif v.startswith("rgb"):
+            m = re.match(r"rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)", v)
+            if m:
+                r, g, b = int(m.group(1)), int(m.group(2)), int(m.group(3))
+
+        if r is not None:
+            # Schwarz/Weiss/sehr helle Farben ignorieren
+            if r + g + b < 60:  # fast schwarz
+                return None
+            if r + g + b > 700:  # fast weiss
+                return None
+
+            # Dominante Farbe bestimmen
+            if r > 180 and g < 100 and b < 100:
+                return "red"
+            if g > 150 and r < 100 and b < 100:
+                return "green"
+            if r < 100 and g < 100 and b > 150:
+                return "blue"
+            if r > 180 and g > 100 and b < 80:
+                return "orange"
+            if r > 180 and g > 180 and b < 100:
+                return "yellow"
+            if r > 140 and b > 140 and g < 100:
+                return "purple"
+            if r > 180 and g < 130 and b > 130:
+                return "pink"
+            if r > 100 and g < 80 and b < 60:
+                return "brown"
+            if abs(r - g) < 40 and abs(g - b) < 40 and 60 < r < 180:
+                return "gray"
+            # Gemischte Farben: nächste Zuordnung
+            if r >= g and r >= b:
+                return "red" if r > 180 else "brown"
+            if g >= r and g >= b:
+                return "green"
+            if b >= r and b >= g:
+                return "blue"
+
+        return None
+
+    def parse_style_annotations(style_str: str) -> dict:
+        """Parse CSS style string und extrahiere Formatierungs-Annotations inkl. Farbe."""
         annotations = {
             "bold": False,
             "italic": False,
             "strikethrough": False,
             "underline": False,
-            "code": False
+            "code": False,
+            "color": None,       # Notion text color (z.B. "red", "green")
         }
-        
+
         if not style_str:
             return annotations
-        
+
         style_lower = style_str.lower()
-        
+
         # Bold: font-weight:bold oder font-weight:700+
         if "font-weight:bold" in style_lower or any(f"font-weight:{w}" in style_lower for w in ["700", "800", "900"]):
             annotations["bold"] = True
-        
+
         # Italic: font-style:italic
         if "font-style:italic" in style_lower:
             annotations["italic"] = True
-        
+
         # Underline: text-decoration:underline
         if "text-decoration:underline" in style_lower:
             annotations["underline"] = True
-        
+
         # Strikethrough: text-decoration:line-through
         if "text-decoration:line-through" in style_lower:
             annotations["strikethrough"] = True
-        
+
+        # Textfarbe: color:... (NICHT background-color)
+        # Suche "color:" aber nicht "background-color:"
+        m = re.search(r'(?<!-)color\s*:\s*([^;]+)', style_lower)
+        if m:
+            notion_color = _css_color_to_notion(m.group(1).strip())
+            if notion_color:
+                annotations["color"] = notion_color
+
+        # Hintergrundfarbe: background-color:... oder background:...
+        m = re.search(r'background(?:-color)?\s*:\s*([^;]+)', style_lower)
+        if m:
+            bg_color = _css_color_to_notion(m.group(1).strip())
+            if bg_color:
+                annotations["color"] = f"{bg_color}_background"
+
         return annotations
     
     def process_node(n, annotations=None):
@@ -228,7 +342,8 @@ def build_rich_text(node: Tag, exclude_nested_lists: bool = False) -> List[Dict[
                 "italic": False,
                 "strikethrough": False,
                 "underline": False,
-                "code": False
+                "code": False,
+                "color": None,
             }
         
         if isinstance(n, NavigableString):
@@ -254,10 +369,13 @@ def build_rich_text(node: Tag, exclude_nested_lists: bool = False) -> List[Dict[
             style = n.get("style")
             if style:
                 style_annotations = parse_style_annotations(str(style))
-                # Merge mit existing annotations (OR-Logik)
-                for key in new_annotations:
-                    if style_annotations[key]:
+                # Merge mit existing annotations (OR-Logik für Booleans)
+                for key in ("bold", "italic", "strikethrough", "underline", "code"):
+                    if style_annotations.get(key):
                         new_annotations[key] = True
+                # Farbe: inneres Element überschreibt äußeres
+                if style_annotations.get("color"):
+                    new_annotations["color"] = style_annotations["color"]
             
             # DANN: HTML-Tags (für andere Quellen)
             # Bold
@@ -290,9 +408,12 @@ def build_rich_text(node: Tag, exclude_nested_lists: bool = False) -> List[Dict[
                         # OneNote-interne Links erkennen und markieren
                         link_url, link_suffix = process_onenote_link(href)
                         display_text = txt + link_suffix if link_suffix else txt
+                        text_obj = {"content": display_text}
+                        if link_url:
+                            text_obj["link"] = {"url": link_url}
                         parts.append({
                             "type": "text",
-                            "text": {"content": display_text, "link": {"url": link_url}},
+                            "text": text_obj,
                             "annotations": new_annotations.copy()
                         })
                     return  # Kinder nicht mehr verarbeiten
@@ -325,11 +446,15 @@ def build_rich_text(node: Tag, exclude_nested_lists: bool = False) -> List[Dict[
             split_parts.append(p)
     parts = split_parts
     
-    # Leere Annotations entfernen (wenn alle False)
+    # Annotations bereinigen
     for p in parts:
         if "annotations" in p:
-            if not any(p["annotations"].values()):
-                # Alle annotations sind False - entfernen
+            ann = p["annotations"]
+            # color=None entfernen (Notion akzeptiert kein null)
+            if "color" in ann and not ann["color"]:
+                del ann["color"]
+            # Komplett leere Annotations entfernen
+            if not any(ann.values()):
                 del p["annotations"]
     
     return parts or [{"type": "text", "text": {"content": ""}}]
@@ -446,8 +571,8 @@ def html_to_blocks_and_tables(
                 url = fixed
         
         try:
-            # MS Graph Auth Headers
-            headers = ms_graph_client.auth.microsoft.headers
+            # MS Graph Auth Headers (Web-kompatibel via _get_headers)
+            headers = ms_graph_client._get_headers()
             r = requests.get(url, headers=headers)
             r.raise_for_status()
             
