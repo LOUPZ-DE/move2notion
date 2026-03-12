@@ -17,7 +17,7 @@ und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 - **Auto-Schema fuer Notion-Datenbanken**: `ensure_database_schema()` prueft und ergaenzt fehlende Properties automatisch vor der Migration
   - OneNote: Name, Section, SectionGroup, Notebook, OneNotePageId, SourceURL, LastEditedUtc
   - Planner: Aufgabenname, LPH/Aufgabentyp, Status, Prioritaet, Fachdisziplin, Tags, verantwortlich, Faelligkeitsdatum
-  - Beruecksichtigt Section/Bereich-Alias bei OneNote
+  - Beruecksichtigt Section/Bereich- und SectionGroup/Unterbereich-Aliase bei OneNote
 - **Datenbank-Erstellung in der Web-GUI**: Neuer "+ Neue DB"-Button neben dem Datenbank-ID-Feld
   - Ausklappbares Panel mit Datenbank-Name und Eltern-Seiten-ID
   - Erstellt Notion-Datenbank mit korrektem Schema (OneNote oder Planner)
@@ -53,6 +53,7 @@ und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
   - Zweistufig: Erkennung im HTML-Parser (`html_parser.py`) und als Safety-Net in `_validate_blocks()` (`content_mapper.py`)
 - **Post-Import-Verifikation**: Nach jeder importierten Seite wird die tatsächliche Blockanzahl in Notion geprüft und mit der erwarteten verglichen
 - **Section-Property flexibles Matching**: Unterstützt sowohl "Section" als auch "Bereich" als Property-Name in der Notion-Datenbank, inkl. `multi_select`-Typ
+- **SectionGroup-Property flexibles Matching**: Unterstützt sowohl "SectionGroup" als auch "Unterbereich" als Property-Name in der Notion-Datenbank
 
 ### Verbessert
 - **Kompakteres Migrations-UI**: Phase-Badge sitzt nun inline neben dem Start-Button statt in separatem Block

@@ -56,6 +56,10 @@ class ContentMapper:
                 if prop_name == "Section":
                     if "Section" not in existing_props and "Bereich" not in existing_props:
                         missing_props[prop_name] = prop_config
+                # SectionGroup/Unterbereich: auch "Unterbereich" als Alias akzeptieren
+                elif prop_name == "SectionGroup":
+                    if "SectionGroup" not in existing_props and "Unterbereich" not in existing_props:
+                        missing_props[prop_name] = prop_config
                 elif prop_name not in existing_props:
                     missing_props[prop_name] = prop_config
 
@@ -357,27 +361,28 @@ class ContentMapper:
         elif section:
             print(f"[⚠] Weder 'Section' noch 'Bereich' Property existiert in Datenbank (section_name='{section}')")
         
-        # SectionGroup - nur wenn Property existiert (für verschachtelte Section Groups)
-        if section_group and "SectionGroup" in db_props:
-            prop_type = db_props["SectionGroup"].get("type")
-            print(f"[🔍] SectionGroup-Property gefunden: Type={prop_type}, Value={section_group}")
+        # SectionGroup/Unterbereich - flexibles Matching (SectionGroup oder Unterbereich)
+        sg_key = next((k for k in db_props if k in ("SectionGroup", "Unterbereich")), None)
+        if section_group and sg_key:
+            prop_type = db_props[sg_key].get("type")
+            print(f"[🔍] {sg_key}-Property gefunden: Type={prop_type}, Value={section_group}")
             if prop_type == "select":
-                properties["SectionGroup"] = {"select": {"name": section_group}}
-                print(f"[✅] SectionGroup gesetzt: {section_group}")
+                properties[sg_key] = {"select": {"name": section_group}}
+                print(f"[✅] {sg_key} gesetzt: {section_group}")
             elif prop_type == "rich_text":
-                properties["SectionGroup"] = {
+                properties[sg_key] = {
                     "rich_text": [{"type": "text", "text": {"content": section_group}}]
                 }
-                print(f"[✅] SectionGroup gesetzt (rich_text): {section_group}")
+                print(f"[✅] {sg_key} gesetzt (rich_text): {section_group}")
             elif prop_type == "multi_select":
                 # Multi-Select: Gruppen-Pfad aufteilen (z.B. "Gruppe1/Untergruppe2" -> ["Gruppe1", "Untergruppe2"])
                 group_parts = [g.strip() for g in section_group.split("/") if g.strip()]
-                properties["SectionGroup"] = {"multi_select": [{"name": g} for g in group_parts]}
-                print(f"[✅] SectionGroup gesetzt (multi_select): {group_parts}")
+                properties[sg_key] = {"multi_select": [{"name": g} for g in group_parts]}
+                print(f"[✅] {sg_key} gesetzt (multi_select): {group_parts}")
             else:
-                print(f"[⚠] SectionGroup-Property ist nicht vom Typ 'select/rich_text/multi_select', sondern '{prop_type}'")
+                print(f"[⚠] {sg_key}-Property ist nicht vom Typ 'select/rich_text/multi_select', sondern '{prop_type}'")
         elif section_group:
-            print(f"[⚠] SectionGroup-Property existiert nicht in Datenbank (section_group='{section_group}')")
+            print(f"[⚠] Weder 'SectionGroup' noch 'Unterbereich' Property existiert in Datenbank (section_group='{section_group}')")
         
         # SourceURL - nur wenn Property existiert
         if web_url and "SourceURL" in db_props and db_props["SourceURL"].get("type") == "url":

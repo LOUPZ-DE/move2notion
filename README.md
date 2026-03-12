@@ -285,7 +285,7 @@ A: Ja! Mit `--resume` (oder ohne, um zu überschreiben).
 A: Fehlende Properties werden **automatisch ergänzt** (`ensure_database_schema`). In der Web-GUI kann man auch direkt eine neue Datenbank mit passendem Schema erstellen ("+ Neue DB"). Die erwarteten Properties:
 
 - **Planner:** Aufgabenname (title), LPH/Aufgabentyp (select), Status (status), Priorität (select), Fachdisziplin (multi_select), Tags (multi_select), verantwortlich (people), Fälligkeitsdatum (date)
-- **OneNote:** Name (title), Section (select), SectionGroup (select), Notebook (rich_text), OneNotePageId (rich_text), SourceURL (url), LastEditedUtc (date)
+- **OneNote:** Name (title), Section/Bereich (select), SectionGroup/Unterbereich (select), Notebook (rich_text), OneNotePageId (rich_text), SourceURL (url), LastEditedUtc (date)
 
 ---
 
