@@ -18,7 +18,10 @@
 <body>
     <nav class="navbar">
         <div class="container">
-            <h1>Microsoft → Notion Migration</h1>
+            <a href="{{ url_for('index') }}" class="navbar-brand">
+                <img src="{{ url_for('static', filename='icons/icon.svg') }}" alt="m2n" class="navbar-logo">
+                <span>move2notion</span>
+            </a>
             {% if session.authenticated %}
             <div class="nav-links">
                 <a href="{{ url_for('index') }}">Dashboard</a>

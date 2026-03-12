@@ -6,7 +6,7 @@
 }
 
 :root {
-    --primary-color: #0066ff;
+    --primary-color: #6366f1;
     --success-color: #00c853;
     --warning-color: #ff9800;
     --danger-color: #f44336;
@@ -53,6 +53,26 @@ main.container {
     display: flex;
     justify-content: space-between;
     align-items: center;
+}
+
+.navbar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    text-decoration: none;
+}
+
+.navbar-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+}
+
+.navbar-brand span {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--primary-color);
+    letter-spacing: -0.3px;
 }
 
 .navbar h1 {
@@ -375,7 +395,7 @@ main.container {
 
 .notebook-card:has(input:checked) {
     border-color: var(--primary-color);
-    background-color: rgba(0, 102, 255, 0.05);
+    background-color: rgba(99, 102, 241, 0.05);
 }
 
 .notebook-card input[type="checkbox"] {
@@ -968,7 +988,7 @@ footer a:hover {
 }
 
 .btn-action:hover {
-    background: #0052cc;
+    background: #4f46e5;
 }
 
 .overview-id {
