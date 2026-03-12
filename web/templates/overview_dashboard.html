@@ -193,10 +193,10 @@ document.addEventListener('DOMContentLoaded', function() {
             btn.textContent = hasAccess ? 'Geladen' : 'Neu laden';
             btn.disabled = hasAccess;
 
-            // Karte visuell markieren wenn kein Zugriff
+            // Karte visuell markieren je nach Zugriff
             var card = groupsList.querySelector('[data-card-id="' + groupId + '"]');
-            if (card && !hasAccess && data.plans_error) {
-                card.classList.add('overview-noaccess');
+            if (card) {
+                card.classList.toggle('overview-noaccess', !hasAccess && !!data.plans_error);
             }
 
             // Details im State speichern (nur fehlerfreie — fehlerhafte sollen neu geladen werden)
