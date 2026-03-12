@@ -15,6 +15,7 @@ und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 - **Gruppen-Uebersicht: Fehlerhafte Details werden nicht mehr gecacht**: Token-Fehler und andere temporaere Fehler beim Laden von Notebooks/Plaenen werden nicht im sessionStorage gespeichert
   - "Neu laden"-Button bei fehlerhaften Gruppen statt dauerhaft gesperrtem "Geladen"
   - Benutzerfreundliche Meldung bei abgelaufener Sitzung statt roher Fehlermeldung
+- **Docker: Sporadische "No token available"-Fehler behoben**: Gunicorn von 2 auf 1 Worker reduziert — mehrere Worker-Prozesse hatten jeweils eigenen Token-Cache, wodurch Requests zufaellig an Worker ohne Token gingen
 
 ### Hinzugefuegt
 - **Planner-Migration: Checkbox "beauftragt"**: Wird automatisch im Datenbankschema angelegt und bei jedem Import auf `true` gesetzt
