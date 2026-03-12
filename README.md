@@ -4,7 +4,7 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC_BY--NC_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
-[![Changelog](https://img.shields.io/badge/Changelog-v0.9.5-orange.svg)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/Changelog-v0.9.6-orange.svg)](CHANGELOG.md)
 
 ---
 
@@ -46,9 +46,12 @@ MS_CLIENT_ID=your-client-id
 MS_TENANT_ID=common
 MS_GRAPH_SCOPES=Notes.Read.All,Sites.Read.All
 
-# Notion
+# Notion (einzelner Token)
 NOTION_TOKEN=secret_your_token
 NOTION_DATABASE_ID=default-database-id
+
+# Notion (Multi-Token fuer hoeheren Durchsatz, optional)
+# NOTION_TOKEN=secret_token_1,secret_token_2,secret_token_3
 
 # Optional
 ON2N_STATE=~/.onenote2notion/state.json
@@ -286,6 +289,16 @@ A: Fehlende Properties werden **automatisch ergänzt** (`ensure_database_schema`
 
 - **Planner:** Aufgabenname (title), LPH/Aufgabentyp (select), Status (status), Priorität (select), Fachdisziplin (multi_select), Tags (multi_select), verantwortlich (people), Fälligkeitsdatum (date)
 - **OneNote:** Name (title), Section/Bereich (select), SectionGroup/Unterbereich (select), Notebook (rich_text), OneNotePageId (rich_text), SourceURL (url), LastEditedUtc (date)
+
+**F: Kann ich mehrere Migrationen parallel ausfuehren?**
+A: Ja! Notion erlaubt ~3 Requests/Sekunde pro API Key. Bei parallelen Migrationen teilen sich alle Prozesse dieses Budget. Fuer hoeheren Durchsatz koennen mehrere Tokens konfiguriert werden:
+
+```bash
+# .env - Kommasepariert, Round-Robin-Verteilung
+NOTION_TOKEN=secret_token_1,secret_token_2
+```
+
+Jeder Token entspricht einer Notion-Integration. Alle Integrations muessen Zugriff auf die Ziel-Datenbank haben (in Notion: Datenbank oeffnen → "..." → "Add connections"). 2 Tokens = ~6 req/s, 3 Tokens = ~9 req/s.
 
 ---
 

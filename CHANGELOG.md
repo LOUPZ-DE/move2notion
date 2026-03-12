@@ -5,6 +5,26 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/)
 und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.9.6] - 2026-03-12
+
+### Behoben
+- **Planner-Migration: Lange Texte fuehren nicht mehr zu API-Fehlern**: Rich-Text-Inhalte >2000 Zeichen (Beschreibungen, Checklisten, Referenzen) werden automatisch in mehrere Notion-konforme Chunks gesplittet
+  - Notion API Limit: max. 2000 Zeichen pro `rich_text`-Element
+  - Betrifft: Beschreibungen, strukturierte/CSV-Checklisten, Referenz-Titel und -Links
+  - Gleiches Muster wie bereits in der OneNote-Migration implementiert
+- **Gruppen-Uebersicht: Fehlerhafte Details werden nicht mehr gecacht**: Token-Fehler und andere temporaere Fehler beim Laden von Notebooks/Plaenen werden nicht im sessionStorage gespeichert
+  - "Neu laden"-Button bei fehlerhaften Gruppen statt dauerhaft gesperrtem "Geladen"
+  - Benutzerfreundliche Meldung bei abgelaufener Sitzung statt roher Fehlermeldung
+
+### Hinzugefuegt
+- **Planner-Migration: Checkbox "beauftragt"**: Wird automatisch im Datenbankschema angelegt und bei jedem Import auf `true` gesetzt
+- **Multi-Token-Support (Round-Robin)**: Mehrere Notion API Tokens fuer hoeheren Durchsatz bei parallelen Migrationen
+  - Kommaseparierte Tokens in `NOTION_TOKEN` Umgebungsvariable: `NOTION_TOKEN=secret_abc,secret_def`
+  - Thread-sicherer Round-Robin verteilt Requests gleichmaessig auf alle Tokens
+  - Linear skalierbar: 2 Tokens = ~6 req/s statt 3 req/s (Notion Rate Limit pro Integration)
+  - Volle Rueckwaertskompatibilitaet: Ein einzelner Token funktioniert wie bisher
+  - Logging bei Mehrfach-Tokens: `[i] Notion Token-Pool: N Tokens konfiguriert (Round-Robin)`
+
 ## [0.9.5] - 2026-03-11
 
 ### Hinzugefuegt

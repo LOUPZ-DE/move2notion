@@ -3,7 +3,9 @@ Gemeinsame Authentifizierung für Microsoft Graph und Notion API.
 """
 import os
 import sys
-from typing import Dict, Any, Optional
+import itertools
+import threading
+from typing import Dict, Any, Optional, List
 import msal
 import requests
 from dataclasses import dataclass
@@ -253,12 +255,47 @@ class NotionAuthenticator:
         }
 
 
+class NotionTokenPool:
+    """Round-Robin über mehrere Notion API Tokens für höheren Durchsatz.
+
+    Notion erlaubt ~3 Requests/Sekunde pro Integration (API Key).
+    Mit mehreren Tokens kann der Durchsatz linear skaliert werden.
+
+    Konfiguration via NOTION_TOKEN (kommasepariert):
+        NOTION_TOKEN=secret_abc,secret_def,secret_ghi
+    """
+
+    def __init__(self, tokens_str: str):
+        token_list = [t.strip() for t in tokens_str.split(",") if t.strip()]
+        if not token_list:
+            raise ValueError("Mindestens ein NOTION_TOKEN erforderlich")
+        self._authenticators = [NotionAuthenticator(t) for t in token_list]
+        self._cycle = itertools.cycle(self._authenticators)
+        self._lock = threading.Lock()
+
+    def next(self) -> NotionAuthenticator:
+        """Naechsten Token im Round-Robin holen (thread-safe)."""
+        with self._lock:
+            return next(self._cycle)
+
+    @property
+    def count(self) -> int:
+        """Anzahl konfigurierter Tokens."""
+        return len(self._authenticators)
+
+    @property
+    def primary(self) -> NotionAuthenticator:
+        """Erster Token (fuer Kompatibilitaet)."""
+        return self._authenticators[0]
+
+
 class AuthManager:
     """Zentrale Authentifizierungsverwaltung."""
 
     def __init__(self):
         self._ms_auth = None
         self._notion_auth = None
+        self._notion_pool = None
         self._config = None
         self._mode = None
 
@@ -314,7 +351,11 @@ class AuthManager:
         else:
             raise ValueError(f"Invalid authentication mode: {mode}. Use 'cli' or 'web'.")
 
-        self._notion_auth = NotionAuthenticator(config.notion_token)
+        self._notion_pool = NotionTokenPool(config.notion_token)
+        self._notion_auth = self._notion_pool.primary
+
+        if self._notion_pool.count > 1:
+            print(f"[i] Notion Token-Pool: {self._notion_pool.count} Tokens konfiguriert (Round-Robin)")
 
     @property
     def microsoft(self):
@@ -337,10 +378,17 @@ class AuthManager:
 
     @property
     def notion(self) -> NotionAuthenticator:
-        """Notion API Authenticator."""
+        """Notion API Authenticator (erster Token, fuer Kompatibilitaet)."""
         if not self._notion_auth:
             raise RuntimeError("AuthManager not initialized. Call initialize() first.")
         return self._notion_auth
+
+    @property
+    def notion_pool(self) -> NotionTokenPool:
+        """Notion Token-Pool fuer Round-Robin."""
+        if not self._notion_pool:
+            raise RuntimeError("AuthManager not initialized. Call initialize() first.")
+        return self._notion_pool
 
 
 # Globaler Auth-Manager

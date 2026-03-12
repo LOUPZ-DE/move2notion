@@ -48,6 +48,14 @@ class NotionClient:
         
         return uuid_str
 
+    def _get_headers(self) -> Dict[str, str]:
+        """Headers via Round-Robin Token-Pool holen."""
+        return self.auth.notion_pool.next().headers
+
+    def _get_headers_no_content_type(self) -> Dict[str, str]:
+        """Headers ohne Content-Type via Round-Robin Token-Pool holen."""
+        return self.auth.notion_pool.next().headers_no_content_type
+
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """Generische HTTP-Anfrage an Notion API mit Retry bei Verbindungsfehlern."""
         url = f"https://api.notion.com/v1{endpoint}"
@@ -57,12 +65,13 @@ class NotionClient:
             if attempt > 0:
                 time.sleep(1.5 * attempt)
             try:
+                headers = self._get_headers()
                 if method.lower() == "get":
-                    response = requests.get(url, headers=self.auth.notion.headers, **kwargs)
+                    response = requests.get(url, headers=headers, **kwargs)
                 elif method.lower() == "post":
-                    response = requests.post(url, headers=self.auth.notion.headers, **kwargs)
+                    response = requests.post(url, headers=headers, **kwargs)
                 elif method.lower() == "patch":
-                    response = requests.patch(url, headers=self.auth.notion.headers, **kwargs)
+                    response = requests.patch(url, headers=headers, **kwargs)
                 else:
                     raise ValueError(f"Unsupported HTTP method: {method}")
 
@@ -314,7 +323,7 @@ class NotionClient:
         # Schritt 1: file_upload erstellen
         response = requests.post(
             "https://api.notion.com/v1/file_uploads",
-            headers=self.auth.notion.headers,
+            headers=self._get_headers(),
             json={"filename": filename, "content_type": ct}
         )
 
@@ -330,7 +339,7 @@ class NotionClient:
         files = {"file": (filename, data, ct)}
         upload_response = requests.post(
             f"https://api.notion.com/v1/file_uploads/{file_upload_id}/send",
-            headers=self.auth.notion.headers_no_content_type,  # NUR Authorization + Notion-Version
+            headers=self._get_headers_no_content_type(),  # NUR Authorization + Notion-Version
             files=files
         )
 

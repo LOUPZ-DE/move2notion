@@ -28,6 +28,7 @@ class NotionMapper:
         "Tags": {"multi_select": {}},
         "verantwortlich": {"people": {}},
         "Fälligkeitsdatum": {"date": {}},
+        "beauftragt": {"checkbox": {}},
     }
 
     # Fachdisziplin-Werte, die in Tags ausgelagert werden sollen
@@ -123,6 +124,9 @@ class NotionMapper:
             if tags_values:
                 properties["Tags"] = {"multi_select": [{"name": name} for name in tags_values]}
 
+        # Beauftragt-Checkbox (immer true bei Import)
+        properties["beauftragt"] = {"checkbox": True}
+
         # Datums-Properties
         for prop_name in ["Fälligkeitsdatum"]:
             value = row.get(prop_name)
@@ -147,6 +151,23 @@ class NotionMapper:
 
         return properties
 
+    @staticmethod
+    def _split_rich_text(content: str, max_length: int = 2000, link: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Text in rich_text-Elemente splitten (Notion-Limit: 2000 Zeichen pro Element)."""
+        content = str(content)
+        if len(content) <= max_length:
+            rt = {"type": "text", "text": {"content": content}}
+            if link:
+                rt["text"]["link"] = {"url": link}
+            return [rt]
+        parts = []
+        for i in range(0, len(content), max_length):
+            chunk = {"type": "text", "text": {"content": content[i:i + max_length]}}
+            if link:
+                chunk["text"]["link"] = {"url": link}
+            parts.append(chunk)
+        return parts
+
     def build_children_blocks(self, row: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Notion-Blöcke für Beschreibung und Checklisten erstellen."""
         blocks = []
@@ -158,7 +179,7 @@ class NotionMapper:
                 "object": "block",
                 "type": "paragraph",
                 "paragraph": {
-                    "rich_text": [{"type": "text", "text": {"content": str(description)}}]
+                    "rich_text": self._split_rich_text(description)
                 }
             })
 
@@ -175,7 +196,7 @@ class NotionMapper:
                         "object": "block",
                         "type": "to_do",
                         "to_do": {
-                            "rich_text": [{"type": "text", "text": {"content": title}}],
+                            "rich_text": self._split_rich_text(title),
                             "checked": checked
                         }
                     })
@@ -206,7 +227,7 @@ class NotionMapper:
                             "object": "block",
                             "type": "to_do",
                             "to_do": {
-                                "rich_text": [{"type": "text", "text": {"content": item}}],
+                                "rich_text": self._split_rich_text(item),
                                 "checked": False
                             }
                         })
@@ -222,13 +243,7 @@ class NotionMapper:
                         "object": "block",
                         "type": "paragraph",
                         "paragraph": {
-                            "rich_text": [{
-                                "type": "text",
-                                "text": {
-                                    "content": title or url,
-                                    "link": {"url": url}
-                                }
-                            }]
+                            "rich_text": self._split_rich_text(title or url, link=url)
                         }
                     })
                 else:
@@ -236,10 +251,7 @@ class NotionMapper:
                         "object": "block",
                         "type": "paragraph",
                         "paragraph": {
-                            "rich_text": [{
-                                "type": "text",
-                                "text": {"content": str(ref)}
-                            }]
+                            "rich_text": self._split_rich_text(str(ref))
                         }
                     })
 

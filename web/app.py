@@ -64,6 +64,8 @@ def is_application_mode() -> bool:
 
 def _friendly_graph_error(error_msg: str) -> str:
     """Graph-API-Fehler in benutzerfreundliche Meldung umwandeln."""
+    if "No token available" in error_msg:
+        return "Sitzung abgelaufen — bitte neu einloggen"
     if "403" in error_msg:
         return "Kein Zugriff (kein Mitglied dieser Gruppe)"
     if "404" in error_msg:
