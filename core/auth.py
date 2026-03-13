@@ -263,7 +263,12 @@ class NotionTokenPool:
 
     Konfiguration via NOTION_TOKEN (kommasepariert):
         NOTION_TOKEN=secret_abc,secret_def,secret_ghi
+
+    Der Pool trackt aktive Konsumenten (Migrations-Prozesse) und berechnet
+    den optimalen Batch-Sleep dynamisch: 0.12s / tokens * workers.
     """
+
+    BASE_SLEEP = 0.12  # Basis-Sleep fuer 1 Token, 1 Worker
 
     def __init__(self, tokens_str: str):
         token_list = [t.strip() for t in tokens_str.split(",") if t.strip()]
@@ -272,6 +277,7 @@ class NotionTokenPool:
         self._authenticators = [NotionAuthenticator(t) for t in token_list]
         self._cycle = itertools.cycle(self._authenticators)
         self._lock = threading.Lock()
+        self._active_workers = 0
 
     def next(self) -> NotionAuthenticator:
         """Naechsten Token im Round-Robin holen (thread-safe)."""
@@ -287,6 +293,29 @@ class NotionTokenPool:
     def primary(self) -> NotionAuthenticator:
         """Erster Token (fuer Kompatibilitaet)."""
         return self._authenticators[0]
+
+    @property
+    def batch_sleep(self) -> float:
+        """Optimaler Sleep zwischen Batches (dynamisch berechnet).
+
+        Formel: BASE_SLEEP / token_count * max(active_workers, 1)
+        - 1 Token, 1 Worker:  0.12s
+        - 2 Tokens, 1 Worker: 0.06s
+        - 2 Tokens, 2 Worker: 0.12s (jeder Worker bekommt halbes Budget)
+        - 3 Tokens, 2 Worker: 0.08s
+        """
+        workers = max(self._active_workers, 1)
+        return self.BASE_SLEEP / self.count * workers
+
+    def register_worker(self):
+        """Worker (Migration) als aktiv registrieren."""
+        with self._lock:
+            self._active_workers += 1
+
+    def unregister_worker(self):
+        """Worker (Migration) als beendet abmelden."""
+        with self._lock:
+            self._active_workers = max(0, self._active_workers - 1)
 
 
 class AuthManager:

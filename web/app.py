@@ -21,7 +21,7 @@ from web.task_manager import task_manager, TaskStatus, emit_progress, emit_compl
 
 def print_banner(port: int):
     """Startup-Banner mit ASCII-Art ausgeben."""
-    VERSION = "0.9.6"
+    VERSION = "0.9.7"
     C = "\033[36m"    # Cyan
     B = "\033[1;34m"  # Bold Blue
     W = "\033[1;37m"  # Bold White
@@ -313,6 +313,7 @@ def start_onenote_migration():
 
 def _run_onenote_migration(task, site_id, notebook_ids, database_id, session_id):
     """OneNote-Migration im Background-Thread."""
+    web_auth_manager.notion_pool.register_worker()
     try:
         from core.ms_graph_client import MSGraphClient
         from core.notion_client import NotionClient
@@ -442,6 +443,8 @@ def _run_onenote_migration(task, site_id, notebook_ids, database_id, session_id)
     except Exception as e:
         emit_progress(task, task.progress, f"Fataler Fehler: {e}", log_type="error")
         emit_complete(task, success=False)
+    finally:
+        web_auth_manager.notion_pool.unregister_worker()
 
 
 # ===== Planner-Migration Routes =====
@@ -487,6 +490,7 @@ def start_planner_migration():
 
 def _run_planner_migration(task, plan_id, database_id, session_id):
     """Planner-Migration im Background-Thread."""
+    web_auth_manager.notion_pool.register_worker()
     try:
         from core.ms_graph_client import MSGraphClient
         from core.notion_client import NotionClient
@@ -601,6 +605,8 @@ def _run_planner_migration(task, plan_id, database_id, session_id):
     except Exception as e:
         emit_progress(task, task.progress, f"Fataler Fehler: {e}", log_type="error")
         emit_complete(task, success=False)
+    finally:
+        web_auth_manager.notion_pool.unregister_worker()
 
 
 # ===== Overview Routes =====

@@ -221,8 +221,3 @@ def validate_file_exists(file_path: str) -> Path:
 def create_clean_csv_path(original_path: Path) -> Path:
     """Pfad für bereinigte CSV erstellen."""
     return original_path.with_name(original_path.stem + "_clean.csv")
-
-
-def setup_rate_limiting(rate_per_second: float) -> float:
-    """Rate Limiting konfigurieren."""
-    return 1.0 / rate_per_second if rate_per_second > 0 else 0

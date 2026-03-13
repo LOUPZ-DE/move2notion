@@ -5,6 +5,23 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/)
 und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.9.7] - 2026-03-13
+
+### Hinzugefuegt
+- **Planner-Migration: Checkbox "archivieren"**: Wird bei Status "erledigt" automatisch auf `true` gesetzt, bei allen anderen Status auf `false` — nur wenn das Feld in der Notion-Datenbank bereits existiert (kein automatisches Anlegen)
+
+### Verbessert
+- **Dynamisches Rate-Limiting**: Batch-Sleep passt sich automatisch an Token-Anzahl und laufende Migrationen an
+  - Formel: `0.12s / Tokens * aktive_Worker` — kein manuelles Tuning noetig
+  - 2 Tokens, 1 Migration: 0.06s Sleep (doppelter Durchsatz)
+  - 2 Tokens, 2 parallele Migrationen: 0.12s Sleep (faires Budget-Sharing)
+  - Worker-Tracking via `register_worker()`/`unregister_worker()` im Token-Pool
+
+### Entfernt
+- **`NOTION_RATE_LIMIT` Umgebungsvariable**: Hatte keine Wirkung (toter Code). Rate-Limiting wird jetzt vollstaendig ueber den Token-Pool gesteuert
+  - `setup_rate_limiting()` aus `core/utils.py` entfernt
+  - `NOTION_RATE_LIMIT=3.0` aus `.env.example` entfernt
+
 ## [0.9.6] - 2026-03-12
 
 ### Behoben

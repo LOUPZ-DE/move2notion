@@ -43,12 +43,14 @@ class NotionMapper:
     def __init__(self, notion_client: NotionClient):
         self.notion = notion_client
         self._notion_users_cache = None  # Cache für Notion-Benutzer (E-Mail → ID)
+        self._db_properties: Dict[str, Any] = {}  # Cache für DB-Properties
 
     def ensure_database_schema(self, database_id: str) -> None:
         """Stellt sicher, dass Datenbank alle erforderlichen Properties hat."""
         try:
             current_db = self.notion.get_database(database_id)
             existing_props = current_db.get("properties", {})
+            self._db_properties = existing_props
 
             # Fehlende Properties hinzufügen
             missing_props = {}
@@ -103,6 +105,10 @@ class NotionMapper:
         status_value = row.get("Status")
         if status_value:
             properties["Status"] = {"status": {"name": str(status_value)}}
+
+        # Archivieren-Checkbox (nur wenn Feld in DB vorhanden)
+        if "archivieren" in self._db_properties:
+            properties["archivieren"] = {"checkbox": status_value == "erledigt"}
 
         # Fachdisziplin (Multi-Select) - kommagetrennt aufteilen
         # Bestimmte Werte in Tags auslagern

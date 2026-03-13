@@ -219,7 +219,7 @@ class NotionClient:
             nonlocal result, failed_blocks
             try:
                 result = self._make_request("PATCH", url, json={"children": batch})
-                time.sleep(0.12)
+                time.sleep(self.auth.notion_pool.batch_sleep)
                 return True
             except Exception as e:
                 if len(batch) == 1:
@@ -240,7 +240,7 @@ class NotionClient:
                 mid = len(batch) // 2
                 print(f"[🔄] Batch ({len(batch)} Blöcke) fehlgeschlagen, halbiere... ({e})")
                 _send_batch(batch[:mid])
-                time.sleep(0.12)
+                time.sleep(self.auth.notion_pool.batch_sleep)
                 _send_batch(batch[mid:])
                 return False
 
