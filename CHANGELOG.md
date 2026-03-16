@@ -16,8 +16,8 @@ und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
   - Neuer TaskStatus `CANCELLED` im Task-Manager
 
 ### Behoben
-- **Bild-Upload bei Multi-Token-Pool fehlgeschlagen**: Die zwei Schritte der Notion File Upload API (create + send) verwendeten durch Round-Robin unterschiedliche Tokens — der zweite Token kannte den `file_upload` des ersten nicht (`404 object_not_found`). Beide Schritte nutzen jetzt denselben Token.
-- **Microsoft Graph API 429 Rate-Limiting**: Alle Graph-API-Aufrufe haben jetzt automatisches Retry mit `Retry-After`-Header bei 429- und 5xx-Fehlern (max. 5 Versuche). Zuvor fuehrten Rate-Limits zum sofortigen Abbruch ganzer Sections/Notebooks.
+- **Bilder bei Multi-Token-Pool nicht sichtbar**: file_upload-IDs sind an den erstellenden Token gebunden — bei Round-Robin verwendeten Upload und `append_blocks` unterschiedliche Tokens (`404 object_not_found`). Neuer Token-Pin-Mechanismus (`pin_token`/`unpin_token`) stellt sicher, dass alle Notion-Operationen einer Seite denselben Token verwenden.
+- **Microsoft Graph API 429 Rate-Limiting**: Alle Graph-API-Aufrufe haben jetzt automatisches Retry bei 429- und 5xx-Fehlern (max. 8 Versuche mit exponentiellem Backoff 2–16s). Zuvor fuehrten Rate-Limits zum sofortigen Abbruch ganzer Sections/Notebooks.
 
 ## [0.9.7] - 2026-03-13
 

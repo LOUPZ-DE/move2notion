@@ -29,7 +29,7 @@ class MSGraphClient:
             return ms.get_headers(self._session_id)
         return ms.headers
 
-    MAX_RETRIES = 5
+    MAX_RETRIES = 8
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """Generische HTTP-Anfrage an Microsoft Graph API mit Retry bei 429/5xx."""
@@ -48,7 +48,8 @@ class MSGraphClient:
                 raise ValueError(f"Unsupported HTTP method: {method}")
 
             if response.status_code == 429 or response.status_code >= 500:
-                retry_after = int(response.headers.get("Retry-After", 2 * (attempt + 1)))
+                header_wait = int(response.headers.get("Retry-After", 2))
+                retry_after = max(header_wait, 2 * (attempt + 1))
                 print(f"[⏳] Graph API {response.status_code}, Retry nach {retry_after}s (Versuch {attempt + 1}/{self.MAX_RETRIES})")
                 time.sleep(retry_after)
                 continue

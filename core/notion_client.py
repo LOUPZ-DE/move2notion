@@ -17,6 +17,7 @@ class NotionClient:
 
     def __init__(self, auth_manager_instance=None):
         self.auth = auth_manager_instance or auth_manager
+        self._pinned_token = None  # Fester Token fuer Seiten-Migration (file_upload-Kompatibilitaet)
 
     def _normalize_uuid(self, uuid_str: str) -> str:
         """
@@ -48,13 +49,29 @@ class NotionClient:
         
         return uuid_str
 
+    def pin_token(self):
+        """Token fuer die Dauer einer Seiten-Migration pinnen.
+
+        Alle nachfolgenden Requests (Upload + Append) verwenden denselben Token,
+        damit file_upload-IDs beim append_blocks erkannt werden.
+        """
+        self._pinned_token = self.auth.notion_pool.next()
+
+    def unpin_token(self):
+        """Token-Pin aufheben, zurueck zu Round-Robin."""
+        self._pinned_token = None
+
+    def _get_token(self):
+        """Aktuellen Token holen (gepinnt oder Round-Robin)."""
+        return self._pinned_token or self.auth.notion_pool.next()
+
     def _get_headers(self) -> Dict[str, str]:
-        """Headers via Round-Robin Token-Pool holen."""
-        return self.auth.notion_pool.next().headers
+        """Headers via gepinnten Token oder Round-Robin holen."""
+        return self._get_token().headers
 
     def _get_headers_no_content_type(self) -> Dict[str, str]:
-        """Headers ohne Content-Type via Round-Robin Token-Pool holen."""
-        return self.auth.notion_pool.next().headers_no_content_type
+        """Headers ohne Content-Type via gepinnten Token oder Round-Robin holen."""
+        return self._get_token().headers_no_content_type
 
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """Generische HTTP-Anfrage an Notion API mit Retry bei Verbindungsfehlern."""
@@ -320,14 +337,11 @@ class NotionClient:
         
         ct = content_type or "application/octet-stream"
 
-        # WICHTIG: Beide Schritte müssen denselben Token verwenden!
-        # file_upload ist an den erstellenden Token gebunden.
-        token = self.auth.notion_pool.next()
-
+        # WICHTIG: Gepinnten Token verwenden (gleicher Token fuer Upload + Append).
         # Schritt 1: file_upload erstellen
         response = requests.post(
             "https://api.notion.com/v1/file_uploads",
-            headers=token.headers,
+            headers=self._get_headers(),
             json={"filename": filename, "content_type": ct}
         )
 
@@ -343,7 +357,7 @@ class NotionClient:
         files = {"file": (filename, data, ct)}
         upload_response = requests.post(
             f"https://api.notion.com/v1/file_uploads/{file_upload_id}/send",
-            headers=token.headers_no_content_type,  # NUR Authorization + Notion-Version, GLEICHER Token
+            headers=self._get_headers_no_content_type(),
             files=files
         )
 

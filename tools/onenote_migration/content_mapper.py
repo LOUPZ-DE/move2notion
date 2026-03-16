@@ -157,6 +157,10 @@ class ContentMapper:
             Notion-Page-ID oder None bei Fehler
         """
         try:
+            # Token pinnen: Upload + Append muessen denselben Token verwenden,
+            # da file_upload-IDs an den erstellenden Token gebunden sind.
+            self.notion.pin_token()
+
             # 1. Metadaten extrahieren
             page_title = onenote_page.get("title") or "Untitled"
             # Hierarchische Nummerierung dem Titel voranstellen (falls vorhanden)
@@ -282,6 +286,8 @@ class ContentMapper:
         except Exception as e:
             print(f"[❌] Page-Import fehlgeschlagen ({onenote_page.get('title', 'Unknown')}): {e}")
             return None
+        finally:
+            self.notion.unpin_token()
 
     # _process_assets wurde entfernt - Bilder werden jetzt inline in html_to_blocks_and_tables verarbeitet!
 
