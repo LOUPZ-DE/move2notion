@@ -133,14 +133,12 @@ class ResourceHandler:
             (Daten, Content-Type) oder (None, None) bei Fehler
         """
         try:
-            # MS Graph Auth-Header (Web-kompatibel via _get_headers)
-            headers = self.ms_graph._get_headers()
-            
-            response = requests.get(url, headers=headers, timeout=30)
+            # MS Graph Binary-Request mit 429-Retry
+            response = self.ms_graph._make_binary_request(url)
             response.raise_for_status()
-            
+
             content_type = response.headers.get("Content-Type", "").split(";")[0].strip()
-            
+
             return response.content, content_type or None
 
         except Exception as e:

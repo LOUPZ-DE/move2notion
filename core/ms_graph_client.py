@@ -232,10 +232,27 @@ class MSGraphClient:
 
         return pages
 
+    def _make_binary_request(self, url: str) -> requests.Response:
+        """HTTP GET fuer Binaer-Inhalte mit Retry bei 429/5xx."""
+        for attempt in range(self.MAX_RETRIES):
+            headers = self._get_headers()
+            response = requests.get(url, headers=headers, timeout=60)
+
+            if response.status_code == 429 or response.status_code >= 500:
+                header_wait = int(response.headers.get("Retry-After", 2))
+                retry_after = max(header_wait, 2 * (attempt + 1))
+                print(f"[⏳] Graph API {response.status_code}, Retry nach {retry_after}s (Versuch {attempt + 1}/{self.MAX_RETRIES})")
+                time.sleep(retry_after)
+                continue
+
+            return response
+
+        return response  # Letzter Response fuer Fehlerbehandlung
+
     def get_page_content(self, site_id: str, page_id: str) -> bytes:
         """HTML-Inhalt einer OneNote-Seite abrufen."""
         url = f"{self.BASE_URL}/sites/{site_id}/onenote/pages/{page_id}/content"
-        response = requests.get(url, headers=self._get_headers())
+        response = self._make_binary_request(url)
 
         if not response.ok:
             raise MSGraphAPIError(f"Page content fetch failed: {response.status_code} - {response.text}")
@@ -245,7 +262,7 @@ class MSGraphClient:
     def get_resource_content(self, site_id: str, resource_id: str) -> bytes:
         """Binärinhalt einer OneNote-Ressource abrufen."""
         url = f"{self.BASE_URL}/sites/{site_id}/onenote/resources/{resource_id}/content"
-        response = requests.get(url, headers=self._get_headers())
+        response = self._make_binary_request(url)
 
         if not response.ok:
             raise MSGraphAPIError(f"Resource fetch failed: {response.status_code} - {response.text}")
