@@ -17,7 +17,7 @@ und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Behoben
 - **Bilder bei Multi-Token-Pool nicht sichtbar**: file_upload-IDs sind an den erstellenden Token gebunden — bei Round-Robin verwendeten Upload und `append_blocks` unterschiedliche Tokens (`404 object_not_found`). Neuer Token-Pin-Mechanismus (`pin_token`/`unpin_token`) stellt sicher, dass alle Notion-Operationen einer Seite denselben Token verwenden.
-- **Microsoft Graph API 429 Rate-Limiting**: Alle Graph-API-Aufrufe haben jetzt automatisches Retry bei 429- und 5xx-Fehlern (max. 8 Versuche mit exponentiellem Backoff 2–16s). Betrifft JSON-Requests (`_make_request`), Seiteninhalt (`get_page_content`), Ressourcen (`get_resource_content`) und Bild-Downloads (`resource_handler`). Zuvor fuehrten Rate-Limits zum Verlust ganzer Seiten und Bilder.
+- **Microsoft Graph API 429 Rate-Limiting**: Alle Graph-API-Aufrufe haben jetzt automatisches Retry bei 429- und 5xx-Fehlern (max. 8 Versuche mit exponentiellem Backoff 2–16s). Betrifft JSON-Requests (`_make_request`), Seiteninhalt (`get_page_content`), Ressourcen (`get_resource_content`) und Bild-Downloads (`resource_handler`, `html_parser`). Zuvor fuehrten Rate-Limits zum Verlust ganzer Seiten und Bilder.
 
 ## [0.9.7] - 2026-03-13
 

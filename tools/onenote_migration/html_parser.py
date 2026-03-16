@@ -571,9 +571,8 @@ def html_to_blocks_and_tables(
                 url = fixed
         
         try:
-            # MS Graph Auth Headers (Web-kompatibel via _get_headers)
-            headers = ms_graph_client._get_headers()
-            r = requests.get(url, headers=headers)
+            # MS Graph Binary-Request mit 429-Retry
+            r = ms_graph_client._make_binary_request(url)
             r.raise_for_status()
             
             raw = r.content
