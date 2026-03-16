@@ -1,6 +1,7 @@
 """
 Microsoft Graph API Client für verschiedene Microsoft-Dienste.
 """
+import time
 import requests
 from typing import Dict, List, Any, Optional
 from urllib.parse import urlparse
@@ -28,24 +29,37 @@ class MSGraphClient:
             return ms.get_headers(self._session_id)
         return ms.headers
 
+    MAX_RETRIES = 5
+
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
-        """Generische HTTP-Anfrage an Microsoft Graph API."""
+        """Generische HTTP-Anfrage an Microsoft Graph API mit Retry bei 429/5xx."""
         url = f"{self.BASE_URL}{endpoint}"
-        headers = self._get_headers()
 
-        if method.lower() == "get":
-            response = requests.get(url, headers=headers, **kwargs)
-        elif method.lower() == "post":
-            response = requests.post(url, headers=headers, **kwargs)
-        elif method.lower() == "patch":
-            response = requests.patch(url, headers=headers, **kwargs)
-        else:
-            raise ValueError(f"Unsupported HTTP method: {method}")
+        for attempt in range(self.MAX_RETRIES):
+            headers = self._get_headers()
 
-        if not response.ok:
-            raise MSGraphAPIError(f"Microsoft Graph API error: {response.status_code} - {response.text}")
+            if method.lower() == "get":
+                response = requests.get(url, headers=headers, **kwargs)
+            elif method.lower() == "post":
+                response = requests.post(url, headers=headers, **kwargs)
+            elif method.lower() == "patch":
+                response = requests.patch(url, headers=headers, **kwargs)
+            else:
+                raise ValueError(f"Unsupported HTTP method: {method}")
 
-        return response.json()
+            if response.status_code == 429 or response.status_code >= 500:
+                retry_after = int(response.headers.get("Retry-After", 2 * (attempt + 1)))
+                print(f"[⏳] Graph API {response.status_code}, Retry nach {retry_after}s (Versuch {attempt + 1}/{self.MAX_RETRIES})")
+                time.sleep(retry_after)
+                continue
+
+            if not response.ok:
+                raise MSGraphAPIError(f"Microsoft Graph API error: {response.status_code} - {response.text}")
+
+            return response.json()
+
+        # Alle Retries aufgebraucht
+        raise MSGraphAPIError(f"Microsoft Graph API error: {response.status_code} nach {self.MAX_RETRIES} Versuchen - {response.text}")
 
     def resolve_site_id_from_url(self, site_url: str) -> str:
         """Site-ID aus SharePoint-URL auflösen."""

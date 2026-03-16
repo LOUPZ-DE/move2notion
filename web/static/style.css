@@ -139,6 +139,10 @@ main.container {
     background-color: var(--success-color);
 }
 
+.btn-danger {
+    background-color: var(--danger-color);
+}
+
 .btn-secondary {
     background-color: var(--text-light);
 }
