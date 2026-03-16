@@ -15,6 +15,7 @@ class TaskStatus(Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
 
 @dataclass
@@ -32,6 +33,7 @@ class MigrationTask:
     errors: List[Dict[str, str]] = field(default_factory=list)
     event_queue: queue.Queue = field(default_factory=queue.Queue)
     thread: Optional[threading.Thread] = None
+    cancelled: threading.Event = field(default_factory=threading.Event)
 
 
 class TaskManager:
@@ -49,6 +51,14 @@ class TaskManager:
 
     def get_task(self, task_id: str) -> Optional[MigrationTask]:
         return self._tasks.get(task_id)
+
+    def cancel_task(self, task_id: str) -> bool:
+        """Task zum Abbrechen markieren. Gibt True zurueck wenn Task gefunden."""
+        task = self._tasks.get(task_id)
+        if task and task.status == TaskStatus.RUNNING:
+            task.cancelled.set()
+            return True
+        return False
 
 
 # Modul-Singleton
@@ -76,6 +86,20 @@ def emit_progress(
         "success_count": task.success_count,
         "error_count": task.error_count,
         "total_items": task.total_items,
+    }
+    task.event_queue.put(event)
+
+
+def emit_cancelled(task: MigrationTask):
+    """Abbruch-Event in die Task-Queue schreiben."""
+    task.status = TaskStatus.CANCELLED
+    event = {
+        "type": "complete",
+        "status": "cancelled",
+        "success_count": task.success_count,
+        "error_count": task.error_count,
+        "total_items": task.total_items,
+        "errors": task.errors[:20],
     }
     task.event_queue.put(event)
 

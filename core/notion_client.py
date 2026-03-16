@@ -319,11 +319,15 @@ class NotionClient:
             return None
         
         ct = content_type or "application/octet-stream"
-        
+
+        # WICHTIG: Beide Schritte müssen denselben Token verwenden!
+        # file_upload ist an den erstellenden Token gebunden.
+        token = self.auth.notion_pool.next()
+
         # Schritt 1: file_upload erstellen
         response = requests.post(
             "https://api.notion.com/v1/file_uploads",
-            headers=self._get_headers(),
+            headers=token.headers,
             json={"filename": filename, "content_type": ct}
         )
 
@@ -332,14 +336,14 @@ class NotionClient:
             return None
 
         file_upload_id = response.json().get("id")
-        
+
         # Schritt 2: Datei senden
-        # KRITISCH: Nicht Content-Type manuell setzen! 
+        # KRITISCH: Nicht Content-Type manuell setzen!
         # requests.post() mit files= setzt automatisch multipart/form-data mit boundary
         files = {"file": (filename, data, ct)}
         upload_response = requests.post(
             f"https://api.notion.com/v1/file_uploads/{file_upload_id}/send",
-            headers=self._get_headers_no_content_type(),  # NUR Authorization + Notion-Version
+            headers=token.headers_no_content_type,  # NUR Authorization + Notion-Version, GLEICHER Token
             files=files
         )
 

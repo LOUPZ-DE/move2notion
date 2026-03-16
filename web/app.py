@@ -17,11 +17,11 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core.auth import AuthManager, AuthConfig
 from tools.onenote_migration.cli import compute_hierarchy_prefixes
-from web.task_manager import task_manager, TaskStatus, emit_progress, emit_complete
+from web.task_manager import task_manager, TaskStatus, emit_progress, emit_complete, emit_cancelled
 
 def print_banner(port: int):
     """Startup-Banner mit ASCII-Art ausgeben."""
-    VERSION = "0.9.7"
+    VERSION = "0.9.8"
     C = "\033[36m"    # Cyan
     B = "\033[1;34m"  # Bold Blue
     W = "\033[1;37m"  # Bold White
@@ -236,6 +236,17 @@ def task_status(task_id):
     })
 
 
+@app.route("/api/tasks/<task_id>/cancel", methods=["POST"])
+def cancel_task(task_id):
+    """Laufende Migration abbrechen."""
+    if "authenticated" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+
+    if task_manager.cancel_task(task_id):
+        return jsonify({"status": "cancelling"})
+    return jsonify({"error": "Task not found or not running"}), 404
+
+
 # ===== OneNote-Migration Routes =====
 
 @app.route("/onenote")
@@ -397,6 +408,14 @@ def _run_onenote_migration(task, site_id, notebook_ids, database_id, session_id)
                         f"Section: {label} ({len(pages)} Seiten)")
 
             for page in pages:
+                if task.cancelled.is_set():
+                    remaining = total_pages - processed
+                    emit_progress(task, task.progress,
+                        f"Migration abgebrochen ({task.success_count} importiert, {remaining} ausstehend)",
+                        log_type="warning", phase="Abgebrochen")
+                    emit_cancelled(task)
+                    return
+
                 page_title = page.get("title") or "Untitled"
                 prefix = hierarchy_prefixes.get(page["id"], "")
                 try:
@@ -579,6 +598,14 @@ def _run_planner_migration(task, plan_id, database_id, session_id):
         emit_progress(task, 60, f"Importiere {len(rows)} Eintraege...", phase="Import")
 
         for i, row in enumerate(rows):
+            if task.cancelled.is_set():
+                remaining = len(rows) - i
+                emit_progress(task, task.progress,
+                    f"Migration abgebrochen ({task.success_count} erstellt, {remaining} ausstehend)",
+                    log_type="warning", phase="Abgebrochen")
+                emit_cancelled(task)
+                return
+
             row_name = row.get("Name", "Unbekannt")
             try:
                 properties = notion_mapper.build_properties_for_row(row, None)

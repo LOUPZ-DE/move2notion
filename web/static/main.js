@@ -95,13 +95,27 @@ function SSEMigrationClient(options) {
     this.logOutput = document.querySelector(options.logOutputSelector);
     this.phaseLabel = document.querySelector(options.phaseSelector);
     this.summaryDiv = document.querySelector(options.summarySelector);
+    this.stopBtn = options.stopButtonSelector ? document.querySelector(options.stopButtonSelector) : null;
     this.onComplete = options.onComplete || function() {};
     this.eventSource = null;
+    this.taskId = null;
 }
 
 SSEMigrationClient.prototype.start = function(taskId) {
     var self = this;
+    this.taskId = taskId;
     this.eventSource = new EventSource('/api/tasks/' + taskId + '/events');
+
+    // Stopp-Button anzeigen und Klick-Handler binden
+    if (this.stopBtn) {
+        this.stopBtn.classList.remove('hidden');
+        this.stopBtn.disabled = false;
+        this.stopBtn.textContent = 'Migration stoppen';
+        this._stopHandler = function() {
+            self._requestCancel();
+        };
+        this.stopBtn.addEventListener('click', this._stopHandler);
+    }
 
     this.eventSource.onmessage = function(event) {
         var data = JSON.parse(event.data);
@@ -113,13 +127,22 @@ SSEMigrationClient.prototype.start = function(taskId) {
                 self._updatePhase(data.phase);
             }
         } else if (data.type === 'complete') {
+            var isCancelled = data.status === 'cancelled';
             var isSuccess = data.status === 'completed';
-            self._updateProgress(100, 'Migration abgeschlossen');
-            self._updatePhase(isSuccess ? 'Abgeschlossen' : 'Fehlgeschlagen');
-            // Phase-Badge Farbe setzen
-            if (self.phaseLabel) {
-                self.phaseLabel.classList.add(isSuccess ? 'phase-done' : 'phase-error');
+
+            if (isCancelled) {
+                self._updatePhase('Abgebrochen');
+                if (self.phaseLabel) {
+                    self.phaseLabel.classList.add('phase-cancelled');
+                }
+            } else {
+                self._updateProgress(100, 'Migration abgeschlossen');
+                self._updatePhase(isSuccess ? 'Abgeschlossen' : 'Fehlgeschlagen');
+                if (self.phaseLabel) {
+                    self.phaseLabel.classList.add(isSuccess ? 'phase-done' : 'phase-error');
+                }
             }
+            self._hideStopButton();
             self._showSummary(data);
             self.eventSource.close();
             self.onComplete(data);
@@ -137,6 +160,42 @@ SSEMigrationClient.prototype.start = function(taskId) {
 SSEMigrationClient.prototype.stop = function() {
     if (this.eventSource) {
         this.eventSource.close();
+    }
+    this._hideStopButton();
+};
+
+SSEMigrationClient.prototype._requestCancel = function() {
+    if (!this.taskId) return;
+    var self = this;
+    if (this.stopBtn) {
+        this.stopBtn.disabled = true;
+        this.stopBtn.textContent = 'Wird abgebrochen...';
+    }
+    fetch('/api/tasks/' + this.taskId + '/cancel', { method: 'POST' })
+        .then(function(resp) {
+            if (!resp.ok) {
+                self._addLogEntry('Abbruch fehlgeschlagen', 'error');
+                if (self.stopBtn) {
+                    self.stopBtn.disabled = false;
+                    self.stopBtn.textContent = 'Migration stoppen';
+                }
+            }
+        })
+        .catch(function() {
+            if (self.stopBtn) {
+                self.stopBtn.disabled = false;
+                self.stopBtn.textContent = 'Migration stoppen';
+            }
+        });
+};
+
+SSEMigrationClient.prototype._hideStopButton = function() {
+    if (this.stopBtn) {
+        this.stopBtn.classList.add('hidden');
+        if (this._stopHandler) {
+            this.stopBtn.removeEventListener('click', this._stopHandler);
+            this._stopHandler = null;
+        }
     }
 };
 
@@ -178,19 +237,33 @@ SSEMigrationClient.prototype._updatePhase = function(phase) {
 };
 
 SSEMigrationClient.prototype._showSummary = function(data) {
+    var isCancelled = data.status === 'cancelled';
     var isSuccess = data.status === 'completed';
-    var msg = isSuccess
-        ? 'Migration erfolgreich: ' + data.success_count + ' erstellt, ' + data.error_count + ' Fehler'
-        : 'Migration fehlgeschlagen: ' + data.success_count + ' erstellt, ' + data.error_count + ' Fehler';
+    var remaining = data.total_items - data.success_count - data.error_count;
 
-    this._addLogEntry(msg, isSuccess ? 'success' : 'error');
-    showToast(msg, isSuccess ? 'success' : 'error');
+    var msg, toastType, heading;
+    if (isCancelled) {
+        msg = 'Migration abgebrochen: ' + data.success_count + ' erstellt, ' + remaining + ' ausstehend';
+        toastType = 'error';
+        heading = 'Migration abgebrochen';
+    } else if (isSuccess) {
+        msg = 'Migration erfolgreich: ' + data.success_count + ' erstellt, ' + data.error_count + ' Fehler';
+        toastType = 'success';
+        heading = 'Migration abgeschlossen';
+    } else {
+        msg = 'Migration fehlgeschlagen: ' + data.success_count + ' erstellt, ' + data.error_count + ' Fehler';
+        toastType = 'error';
+        heading = 'Migration fehlgeschlagen';
+    }
+
+    this._addLogEntry(msg, toastType === 'success' ? 'success' : 'warning');
+    showToast(msg, toastType);
 
     // Summary-Box anzeigen
     if (this.summaryDiv) {
         this.summaryDiv.classList.remove('hidden');
         this.summaryDiv.innerHTML =
-            '<h4>' + (isSuccess ? 'Migration abgeschlossen' : 'Migration fehlgeschlagen') + '</h4>' +
+            '<h4>' + heading + '</h4>' +
             '<div class="summary-stats">' +
                 '<div class="summary-stat stat-success">' +
                     '<div class="stat-value">' + data.success_count + '</div>' +
@@ -204,6 +277,12 @@ SSEMigrationClient.prototype._showSummary = function(data) {
                     '<div class="stat-value">' + (data.success_count + data.error_count) + '</div>' +
                     '<div class="stat-label">Gesamt</div>' +
                 '</div>' +
+                (isCancelled && remaining > 0
+                    ? '<div class="summary-stat stat-pending">' +
+                        '<div class="stat-value">' + remaining + '</div>' +
+                        '<div class="stat-label">Ausstehend</div>' +
+                      '</div>'
+                    : '') +
             '</div>' +
             (data.errors && data.errors.length > 0
                 ? '<div class="summary-errors">' +

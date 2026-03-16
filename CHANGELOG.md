@@ -5,6 +5,19 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/)
 und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.9.8] - 2026-03-16
+
+### Hinzugefuegt
+- **Stopp-Button fuer laufende Migrationen**: OneNote- und Planner-Migrationen koennen jetzt ueber die Web-GUI abgebrochen werden
+  - Roter "Migration stoppen"-Button erscheint waehrend der Migration neben dem Start-Button
+  - Kooperativer Abbruch: Die aktuelle Seite/der aktuelle Task wird noch fertig importiert (kein halbfertiger Import)
+  - Phase-Badge wechselt auf orange "Abgebrochen", Summary zeigt importierte + ausstehende Eintraege
+  - Neuer API-Endpoint `POST /api/tasks/<id>/cancel`
+  - Neuer TaskStatus `CANCELLED` im Task-Manager
+
+### Behoben
+- **Bild-Upload bei Multi-Token-Pool fehlgeschlagen**: Die zwei Schritte der Notion File Upload API (create + send) verwendeten durch Round-Robin unterschiedliche Tokens — der zweite Token kannte den `file_upload` des ersten nicht (`404 object_not_found`). Beide Schritte nutzen jetzt denselben Token.
+
 ## [0.9.7] - 2026-03-13
 
 ### Hinzugefuegt

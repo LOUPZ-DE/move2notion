@@ -593,6 +593,11 @@ footer a:hover {
     animation: none;
 }
 
+.phase-label.phase-cancelled {
+    background: #ff9800;
+    animation: none;
+}
+
 @keyframes phasePulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.7; }
@@ -663,6 +668,7 @@ footer a:hover {
 .stat-success .stat-value { color: var(--success-color); }
 .stat-error .stat-value { color: var(--danger-color); }
 .stat-total .stat-value { color: var(--primary-color); }
+.stat-pending .stat-value { color: #ff9800; }
 
 .summary-errors {
     margin-top: 16px;

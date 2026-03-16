@@ -75,6 +75,7 @@
                 </div>
                 <div class="action-row">
                     <button type="submit" id="onenote-submit-btn" class="btn btn-success btn-large">Migration starten</button>
+                    <button type="button" id="onenote-stop-btn" class="btn btn-danger hidden">Migration stoppen</button>
                     <span id="onenote-phase" class="phase-label hidden">Initialisiere...</span>
                 </div>
             </form>
@@ -214,7 +215,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Phase-Badge anzeigen
         var phaseLabel = document.getElementById('onenote-phase');
-        phaseLabel.classList.remove('hidden', 'phase-done', 'phase-error');
+        phaseLabel.classList.remove('hidden', 'phase-done', 'phase-error', 'phase-cancelled');
         phaseLabel.textContent = 'Initialisiere...';
 
         // Progress-Zustand zuruecksetzen
@@ -251,6 +252,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 logOutputSelector: '#onenote-log-output',
                 phaseSelector: '#onenote-phase',
                 summarySelector: '#onenote-summary',
+                stopButtonSelector: '#onenote-stop-btn',
                 onComplete: function() {
                     onenoteSubmitBtn.disabled = false;
                     onenoteSubmitBtn.textContent = 'Migration starten';
