@@ -95,11 +95,12 @@ class NotionMapper:
             "Aufgabenname": {"title": [{"type": "text", "text": {"content": str(row.get("Name", ""))}}]}
         }
 
-        # Select-Properties
+        # Select-Properties (Kommas in Werten durch Semikolon ersetzen — Notion verbietet Kommas in Select-Optionen)
         for prop_name in ["LPH/Aufgabentyp", "Priorität"]:
             value = row.get(prop_name)
             if value:
-                properties[prop_name] = {"select": {"name": str(value)}}
+                clean_value = str(value).replace(",", ";")
+                properties[prop_name] = {"select": {"name": clean_value}}
 
         # Status-Property (Notion Status)
         status_value = row.get("Status")
