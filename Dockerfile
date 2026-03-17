@@ -33,7 +33,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 CMD ["gunicorn", \
      "--bind", "0.0.0.0:8080", \
      "--workers", "1", \
-     "--threads", "4", \
-     "--timeout", "300", \
+     "--threads", "24", \
+     "--timeout", "900", \
      "--access-logfile", "-", \
      "web.app:app"]

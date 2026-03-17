@@ -18,6 +18,7 @@ und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 ### Behoben
 - **Bilder bei Multi-Token-Pool nicht sichtbar**: file_upload-IDs sind an den erstellenden Token gebunden — bei Round-Robin verwendeten Upload und `append_blocks` unterschiedliche Tokens (`404 object_not_found`). Neuer Token-Pin-Mechanismus (`pin_token`/`unpin_token`) stellt sicher, dass alle Notion-Operationen einer Seite denselben Token verwenden.
 - **Microsoft Graph API 429 Rate-Limiting**: Alle Graph-API-Aufrufe haben jetzt automatisches Retry bei 429- und 5xx-Fehlern (max. 8 Versuche mit exponentiellem Backoff 2–16s). Betrifft JSON-Requests (`_make_request`), Seiteninhalt (`get_page_content`), Ressourcen (`get_resource_content`) und Bild-Downloads (`resource_handler`, `html_parser`). Zuvor fuehrten Rate-Limits zum Verlust ganzer Seiten und Bilder.
+- **Docker: Neustart bei parallelen Migrationen**: Gunicorn-Timeout von 300s auf 900s und Threads von 4 auf 24 erhoeht — bei 3+ parallelen Migrationen mit 429-Retries waren alle 4 Threads blockiert, wodurch der Heartbeat ausblieb und gunicorn den Prozess neu startete. Unterstuetzt jetzt bis zu 10 parallele Migrationen
 
 ## [0.9.7] - 2026-03-13
 
