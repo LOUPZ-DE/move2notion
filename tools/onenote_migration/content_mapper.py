@@ -8,6 +8,7 @@ Dieses Modul koordiniert:
 - Ressourcen-Verarbeitung
 - Notion-Page-Erstellung
 """
+import time
 from typing import List, Dict, Any, Optional, Tuple
 
 from .html_parser import html_to_blocks_and_tables, append_table
@@ -292,14 +293,21 @@ class ContentMapper:
     # _process_assets wurde entfernt - Bilder werden jetzt inline in html_to_blocks_and_tables verarbeitet!
 
     def _fetch_page_content(self, page_id: str) -> Optional[str]:
-        """OneNote-Page-Content laden."""
-        try:
-            # MS Graph API: Page-Content laden (mit site_id)
-            content = self.ms_graph.get_page_content(self.site_id, page_id)
-            return content
-        except Exception as e:
-            print(f"[⚠] Content-Laden fehlgeschlagen: {e}")
-            return None
+        """OneNote-Page-Content laden mit zusaetzlichem Retry bei 429."""
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                content = self.ms_graph.get_page_content(self.site_id, page_id)
+                return content
+            except Exception as e:
+                error_str = str(e)
+                if "429" in error_str and attempt < max_retries - 1:
+                    wait = 30 * (attempt + 1)
+                    print(f"[⏳] Content-Laden 429, warte {wait}s vor erneutem Versuch ({attempt + 1}/{max_retries})")
+                    time.sleep(wait)
+                    continue
+                print(f"[⚠] Content-Laden fehlgeschlagen: {e}")
+                return None
 
     def _build_properties(
         self,
