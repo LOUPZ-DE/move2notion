@@ -98,6 +98,15 @@ class NotionClient:
                     time.sleep(retry_after)
                     continue
 
+                # Server-Fehler (502/503/504): Retry mit Backoff
+                if response.status_code >= 500:
+                    wait = 2 * (attempt + 1)
+                    print(f"[⏳] Notion API {response.status_code}, Retry nach {wait}s (Versuch {attempt + 1}/3)")
+                    time.sleep(wait)
+                    if attempt == 2:
+                        raise NotionAPIError(f"Notion API error: {response.status_code} - {response.text}")
+                    continue
+
                 if not response.ok:
                     raise NotionAPIError(f"Notion API error: {response.status_code} - {response.text}")
 

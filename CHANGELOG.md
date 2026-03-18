@@ -13,6 +13,7 @@ und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 ### Behoben
 - **OneNote: Content-Laden uebersteht 429-Dauerlast**: `_fetch_page_content` hat jetzt einen uebergeordneten Retry (3 Versuche, 30/60/90s Pause) — bei massiv parallelen Migrationen koennen die 8 schnellen Retries in `_make_binary_request` erschoepft sein, bevor das Rate-Limit aufgehoben wird. Zuvor wurden Seiten ohne Content importiert
 - **OneNote: Kommas in Section-Namen fuehren zu Fehlern**: Notion verbietet Kommas in Select/Multi-Select-Optionen — Section-Namen wie `BIM-Projektbesprechung, (Do)14-taetgig` werden jetzt automatisch durch Semikolon ersetzt (analog zur bestehenden Planner-Bucket-Sanitierung)
+- **Notion API 5xx-Retry**: Transiente Server-Fehler (502 Bad Gateway, 503, 504) werden jetzt automatisch bis zu 3x mit Backoff wiederholt. Zuvor fuehrte ein einzelner 502 zum Verlust der Seite
 
 ## [0.9.8] - 2026-03-16
 
