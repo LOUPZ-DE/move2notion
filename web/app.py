@@ -21,7 +21,7 @@ from web.task_manager import task_manager, TaskStatus, emit_progress, emit_compl
 
 def print_banner(port: int):
     """Startup-Banner mit ASCII-Art ausgeben."""
-    VERSION = "0.9.8"
+    VERSION = "0.9.9"
     C = "\033[36m"    # Cyan
     B = "\033[1;34m"  # Bold Blue
     W = "\033[1;37m"  # Bold White
@@ -245,6 +245,14 @@ def cancel_task(task_id):
     if task_manager.cancel_task(task_id):
         return jsonify({"status": "cancelling"})
     return jsonify({"error": "Task not found or not running"}), 404
+
+
+@app.route("/api/tasks/active")
+def active_tasks():
+    """Anzahl laufender Migrationen."""
+    if "authenticated" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    return jsonify(task_manager.get_active_count())
 
 
 # ===== OneNote-Migration Routes =====

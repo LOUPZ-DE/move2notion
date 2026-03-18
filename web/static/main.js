@@ -451,6 +451,40 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+// Aktive-Migrationen-Badge in der Navbar
+function updateActiveTasksBadge() {
+    const badge = document.getElementById('active-tasks-badge');
+    if (!badge) return;
+
+    fetch('/api/tasks/active')
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+            if (!data) { badge.style.display = 'none'; return; }
+            const total = data.total;
+            if (total === 0) { badge.style.display = 'none'; return; }
+
+            let level, label;
+            if (total < 3) { level = 'green'; }
+            else if (total < 6) { level = 'yellow'; }
+            else { level = 'red'; }
+
+            const parts = [];
+            if (data.onenote > 0) parts.push(`${data.onenote} OneNote`);
+            if (data.planner > 0) parts.push(`${data.planner} Planner`);
+            label = parts.join(', ') || `${total}`;
+
+            badge.textContent = `${total} aktiv`;
+            badge.title = `Laufende Migrationen: ${label}`;
+            badge.className = `active-tasks-badge level-${level}`;
+            badge.style.display = '';
+        })
+        .catch(() => { badge.style.display = 'none'; });
+}
+
+// Badge alle 10s aktualisieren
+updateActiveTasksBadge();
+setInterval(updateActiveTasksBadge, 10000);
+
 // Export für Verwendung in anderen Skripten
 window.app = {
     apiRequest: apiRequest,

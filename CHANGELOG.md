@@ -5,6 +5,15 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/)
 und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.9.9] - 2026-03-18
+
+### Hinzugefuegt
+- **Aktive-Migrationen-Badge in der Navbar**: Zeigt Anzahl laufender Migrationen mit Farbindikator an (gruen <3, gelb 3–5, rot 6+). Tooltip zeigt Aufschluesselung nach OneNote/Planner. Aktualisiert sich alle 10s. Neuer API-Endpoint `GET /api/tasks/active`
+
+### Behoben
+- **OneNote: Content-Laden uebersteht 429-Dauerlast**: `_fetch_page_content` hat jetzt einen uebergeordneten Retry (3 Versuche, 30/60/90s Pause) — bei massiv parallelen Migrationen koennen die 8 schnellen Retries in `_make_binary_request` erschoepft sein, bevor das Rate-Limit aufgehoben wird. Zuvor wurden Seiten ohne Content importiert
+- **OneNote: Kommas in Section-Namen fuehren zu Fehlern**: Notion verbietet Kommas in Select/Multi-Select-Optionen — Section-Namen wie `BIM-Projektbesprechung, (Do)14-taetgig` werden jetzt automatisch durch Semikolon ersetzt (analog zur bestehenden Planner-Bucket-Sanitierung)
+
 ## [0.9.8] - 2026-03-16
 
 ### Hinzugefuegt
@@ -17,7 +26,7 @@ und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
 ### Behoben
 - **Bilder bei Multi-Token-Pool nicht sichtbar**: file_upload-IDs sind an den erstellenden Token gebunden — bei Round-Robin verwendeten Upload und `append_blocks` unterschiedliche Tokens (`404 object_not_found`). Neuer Token-Pin-Mechanismus (`pin_token`/`unpin_token`) stellt sicher, dass alle Notion-Operationen einer Seite denselben Token verwenden.
-- **Microsoft Graph API 429 Rate-Limiting**: Alle Graph-API-Aufrufe haben jetzt automatisches Retry bei 429- und 5xx-Fehlern (max. 8 Versuche mit exponentiellem Backoff 2–16s). Betrifft JSON-Requests (`_make_request`), Seiteninhalt (`get_page_content`), Ressourcen (`get_resource_content`) und Bild-Downloads (`resource_handler`, `html_parser`). Zusaetzlich: `_fetch_page_content` hat einen uebergeordneten Retry (3 Versuche, 30/60/90s Pause) — bei massiv parallelen Migrationen koennen 8 schnelle Retries erschoepft sein, bevor die Rate-Limit-Sperre aufgehoben wird. Zuvor fuehrten Rate-Limits zum Verlust ganzer Seiten und Bilder.
+- **Microsoft Graph API 429 Rate-Limiting**: Alle Graph-API-Aufrufe haben jetzt automatisches Retry bei 429- und 5xx-Fehlern (max. 8 Versuche mit exponentiellem Backoff 2–16s). Betrifft JSON-Requests (`_make_request`), Seiteninhalt (`get_page_content`), Ressourcen (`get_resource_content`) und Bild-Downloads (`resource_handler`, `html_parser`). Zuvor fuehrten Rate-Limits zum Verlust ganzer Seiten und Bilder.
 - **Docker: Neustart bei parallelen Migrationen**: Gunicorn-Timeout von 300s auf 900s und Threads von 4 auf 24 erhoeht — bei 3+ parallelen Migrationen mit 429-Retries waren alle 4 Threads blockiert, wodurch der Heartbeat ausblieb und gunicorn den Prozess neu startete. Unterstuetzt jetzt bis zu 10 parallele Migrationen
 - **Planner: Kommas in Bucket-Namen fuehren zu Fehlern**: Notion verbietet Kommas in Select-Optionen — Bucket-Namen wie `LPH 5 (Stufe 2, noch nicht beauftragt)` werden jetzt automatisch mit Semikolon sanitized
 

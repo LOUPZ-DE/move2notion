@@ -52,6 +52,16 @@ class TaskManager:
     def get_task(self, task_id: str) -> Optional[MigrationTask]:
         return self._tasks.get(task_id)
 
+    def get_active_count(self) -> Dict[str, int]:
+        """Anzahl laufender Migrationen nach Typ."""
+        with self._lock:
+            running = [t for t in self._tasks.values() if t.status == TaskStatus.RUNNING]
+        return {
+            "total": len(running),
+            "onenote": sum(1 for t in running if t.task_type == "onenote"),
+            "planner": sum(1 for t in running if t.task_type == "planner"),
+        }
+
     def cancel_task(self, task_id: str) -> bool:
         """Task zum Abbrechen markieren. Gibt True zurueck wenn Task gefunden."""
         task = self._tasks.get(task_id)

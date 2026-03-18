@@ -109,6 +109,30 @@ main.container {
     background-color: rgba(244, 67, 54, 0.1);
 }
 
+.active-tasks-badge {
+    padding: 4px 12px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: default;
+}
+
+.active-tasks-badge.level-green {
+    background-color: rgba(76, 175, 80, 0.15);
+    color: #4caf50;
+}
+
+.active-tasks-badge.level-yellow {
+    background-color: rgba(255, 193, 7, 0.15);
+    color: #ffc107;
+}
+
+.active-tasks-badge.level-red {
+    background-color: rgba(244, 67, 54, 0.15);
+    color: #f44336;
+}
+
 /* ===== Buttons ===== */
 .btn {
     display: inline-flex;

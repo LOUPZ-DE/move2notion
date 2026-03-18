@@ -358,18 +358,20 @@ class ContentMapper:
         section_key = next((k for k in db_props if k in ("Section", "Bereich")), None)
         if section and section_key:
             prop_type = db_props[section_key].get("type")
-            print(f"[🔍] Section-Property '{section_key}' gefunden: Type={prop_type}, Value={section}")
+            # Notion verbietet Kommas in Select/Multi-Select-Werten
+            safe_section = section.replace(",", ";") if prop_type in ("select", "multi_select") else section
+            print(f"[🔍] Section-Property '{section_key}' gefunden: Type={prop_type}, Value={safe_section}")
             if prop_type == "select":
-                properties[section_key] = {"select": {"name": section}}
-                print(f"[✅] {section_key} gesetzt: {section}")
+                properties[section_key] = {"select": {"name": safe_section}}
+                print(f"[✅] {section_key} gesetzt: {safe_section}")
             elif prop_type == "rich_text":
                 properties[section_key] = {
                     "rich_text": [{"type": "text", "text": {"content": section}}]
                 }
                 print(f"[✅] {section_key} gesetzt (rich_text): {section}")
             elif prop_type == "multi_select":
-                properties[section_key] = {"multi_select": [{"name": section}]}
-                print(f"[✅] {section_key} gesetzt (multi_select): {section}")
+                properties[section_key] = {"multi_select": [{"name": safe_section}]}
+                print(f"[✅] {section_key} gesetzt (multi_select): {safe_section}")
             else:
                 print(f"[⚠] {section_key}-Property ist nicht vom Typ 'select', sondern '{prop_type}'")
         elif section:
@@ -379,18 +381,18 @@ class ContentMapper:
         sg_key = next((k for k in db_props if k in ("SectionGroup", "Unterbereich")), None)
         if section_group and sg_key:
             prop_type = db_props[sg_key].get("type")
-            print(f"[🔍] {sg_key}-Property gefunden: Type={prop_type}, Value={section_group}")
+            safe_sg = section_group.replace(",", ";") if prop_type in ("select", "multi_select") else section_group
+            print(f"[🔍] {sg_key}-Property gefunden: Type={prop_type}, Value={safe_sg}")
             if prop_type == "select":
-                properties[sg_key] = {"select": {"name": section_group}}
-                print(f"[✅] {sg_key} gesetzt: {section_group}")
+                properties[sg_key] = {"select": {"name": safe_sg}}
+                print(f"[✅] {sg_key} gesetzt: {safe_sg}")
             elif prop_type == "rich_text":
                 properties[sg_key] = {
                     "rich_text": [{"type": "text", "text": {"content": section_group}}]
                 }
                 print(f"[✅] {sg_key} gesetzt (rich_text): {section_group}")
             elif prop_type == "multi_select":
-                # Multi-Select: Gruppen-Pfad aufteilen (z.B. "Gruppe1/Untergruppe2" -> ["Gruppe1", "Untergruppe2"])
-                group_parts = [g.strip() for g in section_group.split("/") if g.strip()]
+                group_parts = [g.strip().replace(",", ";") for g in section_group.split("/") if g.strip()]
                 properties[sg_key] = {"multi_select": [{"name": g} for g in group_parts]}
                 print(f"[✅] {sg_key} gesetzt (multi_select): {group_parts}")
             else:
