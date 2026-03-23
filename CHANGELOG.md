@@ -5,6 +5,11 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/)
 und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.9.10] - 2026-03-23
+
+### Behoben
+- **OneNote: Fehlende Seiten bei Sections mit >100 Eintraegen**: Die Pagination in `list_pages_for_section` wurde abgebrochen, wenn der `@odata.nextLink` der Microsoft Graph API ein abweichendes URL-Format hatte. Sections mit mehr als 100 Seiten (z.B. "AP4 IT") zeigten deshalb nur genau 100 Seiten statt der tatsaechlichen Anzahl. Neue robuste `_extract_endpoint()`-Methode parst alle gaengigen Graph-URL-Formate. Pagination-Logging zeigt jetzt Fortschritt bei mehrseitigen Abrufen
+
 ## [0.9.9] - 2026-03-18
 
 ### Hinzugefuegt

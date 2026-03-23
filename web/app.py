@@ -21,7 +21,7 @@ from web.task_manager import task_manager, TaskStatus, emit_progress, emit_compl
 
 def print_banner(port: int):
     """Startup-Banner mit ASCII-Art ausgeben."""
-    VERSION = "0.9.9"
+    VERSION = "0.9.10"
     C = "\033[36m"    # Cyan
     B = "\033[1;34m"  # Bold Blue
     W = "\033[1;37m"  # Bold White

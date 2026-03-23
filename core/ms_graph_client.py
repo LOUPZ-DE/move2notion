@@ -31,6 +31,33 @@ class MSGraphClient:
 
     MAX_RETRIES = 8
 
+    def _extract_endpoint(self, url: str) -> str:
+        """Extrahiert den API-Endpoint aus einer vollen Graph-URL.
+
+        Behandelt verschiedene URL-Formate die Microsoft Graph zurueckgeben kann,
+        z.B. mit/ohne Trailing-Slash, mit Query-Parametern, etc.
+        """
+        if not url:
+            return url
+        # Bekannte Graph API Prefixe entfernen
+        for prefix in [self.BASE_URL, "https://graph.microsoft.com/v1.0"]:
+            if url.startswith(prefix):
+                return url[len(prefix):]
+        # Falls URL mit https:// beginnt aber anderer Host/Pfad: Pfad extrahieren
+        if url.startswith("https://"):
+            parsed = urlparse(url)
+            # Nur graph.microsoft.com URLs akzeptieren
+            if "graph.microsoft.com" in parsed.hostname:
+                # Pfad nach /v1.0 oder /beta extrahieren
+                path = parsed.path
+                for api_prefix in ["/v1.0", "/beta"]:
+                    if api_prefix in path:
+                        endpoint = path[path.index(api_prefix) + len(api_prefix):]
+                        if parsed.query:
+                            endpoint += f"?{parsed.query}"
+                        return endpoint
+        return url
+
     def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
         """Generische HTTP-Anfrage an Microsoft Graph API mit Retry bei 429/5xx."""
         url = f"{self.BASE_URL}{endpoint}"
@@ -218,16 +245,25 @@ class MSGraphClient:
 
         pages = []
         current_url = url
+        page_num = 0
 
         while current_url:
+            page_num += 1
             result = self._make_request("GET", current_url)
-            pages.extend(result.get("value", []))
+            batch = result.get("value", [])
+            pages.extend(batch)
 
             # Nächste Seite laden falls vorhanden
             next_link = result.get("@odata.nextLink")
-            if next_link and next_link.startswith(self.BASE_URL):
-                current_url = next_link.replace(self.BASE_URL, "")
+            if next_link:
+                if page_num == 1:
+                    print(f"[📄] Pagination: {len(batch)} Seiten geladen, lade weitere...")
+                else:
+                    print(f"[📄] Pagination Seite {page_num}: +{len(batch)} Seiten (gesamt: {len(pages)})")
+                current_url = self._extract_endpoint(next_link)
             else:
+                if page_num > 1:
+                    print(f"[📄] Pagination abgeschlossen: {len(pages)} Seiten total ({page_num} API-Aufrufe)")
                 current_url = None
 
         return pages
