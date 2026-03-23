@@ -224,7 +224,13 @@ class MSGraphClient:
         return sections
 
     def list_pages_for_section(self, site_id: str, section_id: str, since: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Seiten einer Section auflisten."""
+        """Seiten einer Section auflisten.
+
+        Die OneNote Pages API hat ein hartes $top-Limit von 100 und liefert bei
+        pagelevel=true&$orderby=order keinen @odata.nextLink zurueck, selbst wenn
+        weitere Seiten existieren. Daher wird manuell mit $skip paginiert, solange
+        die API genau 100 Ergebnisse liefert.
+        """
         # Zuerst Section-Details abrufen um pagesUrl zu bekommen
         section = self._make_request("GET", f"/sites/{site_id}/onenote/sections/{section_id}")
         pages_url = section.get("pagesUrl")
@@ -236,35 +242,45 @@ class MSGraphClient:
         if pages_url.startswith(self.BASE_URL):
             pages_url = pages_url.replace(self.BASE_URL, "")
 
-        # Query-Parameter hinzufügen
-        # pagelevel=true ist ZWINGEND nötig, damit die API level/order Properties zurückgibt
-        # (diese sind NICHT im Default-Response und $select allein reicht NICHT)
-        url = f"{pages_url}?$top=100&pagelevel=true&$orderby=order"
+        # Query-Parameter aufbauen
+        # pagelevel=true ist ZWINGEND noetig, damit die API level/order Properties zurueckgibt
+        # $top=100 ist das harte API-Maximum fuer OneNote Pages
+        PAGE_SIZE = 100
+        base_params = f"$top={PAGE_SIZE}&pagelevel=true&$orderby=order"
         if since:
-            url += f"&$filter=lastModifiedDateTime ge {since}T00:00:00Z"
+            base_params += f"&$filter=lastModifiedDateTime ge {since}T00:00:00Z"
 
         pages = []
-        current_url = url
-        page_num = 0
+        skip = 0
 
-        while current_url:
-            page_num += 1
-            result = self._make_request("GET", current_url)
+        while True:
+            url = f"{pages_url}?{base_params}&$skip={skip}"
+            result = self._make_request("GET", url)
             batch = result.get("value", [])
             pages.extend(batch)
 
-            # Nächste Seite laden falls vorhanden
+            # Pruefe ob nextLink vorhanden (fuer den Fall, dass MS das irgendwann fixt)
             next_link = result.get("@odata.nextLink")
             if next_link:
-                if page_num == 1:
-                    print(f"[📄] Pagination: {len(batch)} Seiten geladen, lade weitere...")
-                else:
-                    print(f"[📄] Pagination Seite {page_num}: +{len(batch)} Seiten (gesamt: {len(pages)})")
-                current_url = self._extract_endpoint(next_link)
-            else:
-                if page_num > 1:
-                    print(f"[📄] Pagination abgeschlossen: {len(pages)} Seiten total ({page_num} API-Aufrufe)")
-                current_url = None
+                print(f"[📄] Pagination via nextLink: {len(pages)} Seiten bisher, lade weitere...")
+                url = self._extract_endpoint(next_link)
+                # nextLink ersetzt unsere manuelle $skip-Logik
+                while url:
+                    result = self._make_request("GET", url)
+                    pages.extend(result.get("value", []))
+                    nl = result.get("@odata.nextLink")
+                    url = self._extract_endpoint(nl) if nl else None
+                break
+
+            # Kein nextLink: manuell mit $skip weiterblaettern wenn Batch voll
+            if len(batch) < PAGE_SIZE:
+                break
+
+            skip += PAGE_SIZE
+            print(f"[📄] Section hat >{len(pages)} Seiten, lade weitere ($skip={skip})...")
+
+        if skip > 0:
+            print(f"[📄] Pagination abgeschlossen: {len(pages)} Seiten total")
 
         return pages
 

@@ -8,7 +8,7 @@ und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 ## [0.9.10] - 2026-03-23
 
 ### Behoben
-- **OneNote: Fehlende Seiten bei Sections mit >100 Eintraegen**: Die Pagination in `list_pages_for_section` wurde abgebrochen, wenn der `@odata.nextLink` der Microsoft Graph API ein abweichendes URL-Format hatte. Sections mit mehr als 100 Seiten (z.B. "AP4 IT") zeigten deshalb nur genau 100 Seiten statt der tatsaechlichen Anzahl. Neue robuste `_extract_endpoint()`-Methode parst alle gaengigen Graph-URL-Formate. Pagination-Logging zeigt jetzt Fortschritt bei mehrseitigen Abrufen
+- **OneNote: Fehlende Seiten bei Sections mit >100 Eintraegen**: Die Microsoft Graph API fuer OneNote Pages hat ein hartes `$top`-Limit von 100 und liefert bei `pagelevel=true&$orderby=order` keinen `@odata.nextLink` zurueck — Sections mit mehr als 100 Seiten wurden deshalb still bei 100 abgeschnitten. Workaround: Manuelle `$skip`-Pagination wenn ein Batch genau 100 Ergebnisse liefert. Im Test: 353 → 405 Seiten (+52 fehlende Seiten in AP3 Umsetzung und AP4 IT)
 
 ## [0.9.9] - 2026-03-18
 
