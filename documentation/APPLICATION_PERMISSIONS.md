@@ -37,6 +37,8 @@ Anleitung zur Einrichtung von Application Permissions für die automatisierte Mi
 | `Group.Read.All` | Gruppen und Mitglieder lesen | Planner-Zuweisungen |
 | `User.Read.All` | Benutzerprofile lesen | People-Mapping |
 
+> **Teams-Migration im Application-Modus**: Aktuell **nicht unterstützt**. Microsoft hat den Application-Only-Zugriff auf `/teams/{}/channels/{}/messages` 2022 als „Protected API" mit Pay-per-API-Modell deklariert (Modell A = Evaluation 500 Requests/Monat, Modell B = Volume Billing via Azure Subscription). Im **Delegated**-Modus (User-Login) ist diese Bezahlpflicht nicht relevant — dort gilt nur die normale M365-User-Lizenz, daher läuft die Teams-Migration ausschließlich Delegated.
+
 ### 3. Admin Consent erteilen
 
 1. **API permissions** → **Grant admin consent for [Tenant-Name]**

@@ -58,12 +58,20 @@ class MSGraphClient:
                         return endpoint
         return url
 
-    def _make_request(self, method: str, endpoint: str, **kwargs) -> Dict[str, Any]:
-        """Generische HTTP-Anfrage an Microsoft Graph API mit Retry bei 429/5xx."""
+    def _make_request(self, method: str, endpoint: str, extra_headers: Optional[Dict[str, str]] = None, **kwargs) -> Dict[str, Any]:
+        """Generische HTTP-Anfrage an Microsoft Graph API mit Retry bei 429/5xx.
+
+        Args:
+            method: HTTP-Methode (GET/POST/PATCH).
+            endpoint: API-Pfad ab `/v1.0` oder vollstaendige Graph-URL.
+            extra_headers: Zusaetzliche HTTP-Header (z. B. `Prefer` fuer Teams-API).
+        """
         url = f"{self.BASE_URL}{endpoint}"
 
         for attempt in range(self.MAX_RETRIES):
-            headers = self._get_headers()
+            headers = dict(self._get_headers())
+            if extra_headers:
+                headers.update(extra_headers)
 
             if method.lower() == "get":
                 response = requests.get(url, headers=headers, **kwargs)
@@ -71,6 +79,8 @@ class MSGraphClient:
                 response = requests.post(url, headers=headers, **kwargs)
             elif method.lower() == "patch":
                 response = requests.patch(url, headers=headers, **kwargs)
+            elif method.lower() == "delete":
+                response = requests.delete(url, headers=headers, **kwargs)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
 
@@ -84,6 +94,9 @@ class MSGraphClient:
             if not response.ok:
                 raise MSGraphAPIError(f"Microsoft Graph API error: {response.status_code} - {response.text}")
 
+            # DELETE liefert in der Regel 204 No Content
+            if response.status_code == 204 or not response.content:
+                return {}
             return response.json()
 
         # Alle Retries aufgebraucht
@@ -475,6 +488,149 @@ class MSGraphClient:
         """Einzelnen Benutzer anhand der User-ID abrufen."""
         endpoint = f"/users/{user_id}"
         return self._make_request("GET", endpoint)
+
+    # ===== Teams / Channels / Messages =====
+
+    # Header fuer Teams-Messages-Endpoints. Microsoft fordert seit 2022 eine
+    # Lizenzierung (Pay-per-API): Modell A = Evaluation (max. 500 Requests/Monat),
+    # Modell B = Volume Billing. Der Header signalisiert dem Service den Modus.
+    # Ohne aktivierte Lizenz im M365-Tenant antwortet Graph mit 403.
+    _TEAMS_MESSAGES_HEADERS = {
+        "Prefer": 'include-unknown-enum-members'
+    }
+
+    def list_joined_teams(self) -> List[Dict[str, Any]]:
+        """Teams auflisten, in denen der angemeldete User Mitglied ist (delegated)."""
+        teams = []
+        endpoint = "/me/joinedTeams"
+
+        while endpoint:
+            result = self._make_request("GET", endpoint)
+            teams.extend(result.get("value", []))
+
+            next_link = result.get("@odata.nextLink")
+            endpoint = self._extract_endpoint(next_link) if next_link else None
+
+        return teams
+
+    def get_team(self, team_id: str) -> Dict[str, Any]:
+        """Ein Team anhand der ID abrufen."""
+        return self._make_request("GET", f"/teams/{team_id}")
+
+    def list_team_channels(self, team_id: str) -> List[Dict[str, Any]]:
+        """Alle Channels eines Teams auflisten (standard, private, shared).
+
+        Hinweis: Der Endpoint `/teams/{id}/channels` unterstuetzt **kein** `$top` —
+        Microsoft Graph antwortet mit 400 'Query option Top is not allowed'.
+        Channels werden grundsaetzlich vollstaendig zurueckgegeben.
+        """
+        channels = []
+        endpoint = f"/teams/{team_id}/channels"
+
+        while endpoint:
+            result = self._make_request("GET", endpoint)
+            channels.extend(result.get("value", []))
+
+            next_link = result.get("@odata.nextLink")
+            endpoint = self._extract_endpoint(next_link) if next_link else None
+
+        return channels
+
+    def group_has_team(self, group_id: str) -> bool:
+        """Prueft, ob eine M365-Gruppe als Teams-Team provisioniert ist.
+
+        Liest `resourceProvisioningOptions` und sucht nach "Team". Gibt False
+        zurueck, wenn der API-Call fehlschlaegt (z. B. fehlende Berechtigung),
+        damit Discovery-Loops nicht abbrechen.
+        """
+        try:
+            result = self._make_request(
+                "GET",
+                f"/groups/{group_id}?$select=resourceProvisioningOptions"
+            )
+            options = result.get("resourceProvisioningOptions", []) or []
+            return "Team" in options
+        except Exception:
+            return False
+
+    def list_channel_messages(
+        self,
+        team_id: str,
+        channel_id: str,
+        since: Optional[str] = None,
+        expand_replies: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """Alle Top-Level-Messages eines Channels auflisten.
+
+        Args:
+            team_id: Team-ID.
+            channel_id: Channel-ID.
+            since: Optional ISO-Datum (YYYY-MM-DD) fuer
+                `lastModifiedDateTime ge {since}T00:00:00Z`.
+            expand_replies: Wenn True, werden Replies via `$expand=replies`
+                inline mitgeladen (kann bei langen Threads abgeschnitten werden).
+
+        Hinweis: `messages`-Endpoints sind Pay-per-API. Bei 403 muss der
+        Tenant-Admin die Teams Graph API Lizenz aktivieren (M365 Admin Center).
+        """
+        params = ["$top=50"]
+        if expand_replies:
+            params.append("$expand=replies")
+        if since:
+            params.append(f"$filter=lastModifiedDateTime ge {since}T00:00:00Z")
+
+        endpoint = f"/teams/{team_id}/channels/{channel_id}/messages?{'&'.join(params)}"
+
+        messages = []
+        while endpoint:
+            result = self._make_request(
+                "GET", endpoint, extra_headers=self._TEAMS_MESSAGES_HEADERS
+            )
+            messages.extend(result.get("value", []))
+
+            next_link = result.get("@odata.nextLink")
+            endpoint = self._extract_endpoint(next_link) if next_link else None
+
+        return messages
+
+    def list_channel_message_replies(
+        self, team_id: str, channel_id: str, message_id: str
+    ) -> List[Dict[str, Any]]:
+        """Replies einer Top-Level-Message auflisten.
+
+        Wird als Fallback verwendet, wenn `$expand=replies` mehr Replies hat,
+        als Microsoft inline ausliefert (Truncation).
+        """
+        replies = []
+        endpoint = f"/teams/{team_id}/channels/{channel_id}/messages/{message_id}/replies?$top=50"
+
+        while endpoint:
+            result = self._make_request(
+                "GET", endpoint, extra_headers=self._TEAMS_MESSAGES_HEADERS
+            )
+            replies.extend(result.get("value", []))
+
+            next_link = result.get("@odata.nextLink")
+            endpoint = self._extract_endpoint(next_link) if next_link else None
+
+        return replies
+
+    def get_message_hosted_content(
+        self, team_id: str, channel_id: str, message_id: str, hosted_id: str
+    ) -> bytes:
+        """Inline-Bild oder andere hostedContent-Ressource einer Message herunterladen."""
+        url = (
+            f"{self.BASE_URL}/teams/{team_id}/channels/{channel_id}"
+            f"/messages/{message_id}/hostedContents/{hosted_id}/$value"
+        )
+        response = self._make_binary_request(url)
+
+        if not response.ok:
+            raise MSGraphAPIError(
+                f"Hosted content fetch failed: {response.status_code} - {response.text}"
+            )
+
+        return response.content
 
 
 # Convenience-Funktionen

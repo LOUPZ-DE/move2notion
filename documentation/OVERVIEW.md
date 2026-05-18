@@ -1,12 +1,12 @@
 # 🔍 Overview-Tool Dokumentation
 
-Auflistung aller Microsoft 365-Gruppen mit ihren OneNote-Notebooks und Planner-Plänen.
+Auflistung aller Microsoft 365-Gruppen mit ihren OneNote-Notebooks, Planner-Plänen **und Teams-Channels**.
 
 ---
 
 ## 📋 Übersicht
 
-Das Overview-Tool dient der **Discovery** von Ressourcen im Microsoft 365 Tenant. Es zeigt alle Teams-Gruppen und deren zugehörige OneNote-Notebooks sowie Planner-Boards mit Titel und ID an — als Grundlage für gezielte Migrationen.
+Das Overview-Tool dient der **Discovery** von Ressourcen im Microsoft 365 Tenant. Es zeigt alle Teams-Gruppen und deren zugehörige OneNote-Notebooks, Planner-Boards **sowie Teams-Channels** mit Titel und ID an — als Grundlage für gezielte Migrationen.
 
 ### Verfügbar als
 
@@ -93,8 +93,16 @@ Microsoft 365 Overview
     - Sprint Board
       ID: xYz789...
 
+  Teams-Channels (3):
+    - Allgemein  (standard)
+      ID: 19:abc...
+    - Architektur (privat)  (private)
+      ID: 19:def...
+    - Externer Austausch  (shared)
+      ID: 19:ghi...
+
 ======================================================================
-  Zusammenfassung: 12 Gruppen, 8 Notebooks, 5 Planner-Plaene
+  Zusammenfassung: 12 Gruppen, 8 Notebooks, 5 Planner-Plaene, 27 Teams-Channels
 ======================================================================
 ```
 
@@ -111,8 +119,8 @@ Nach dem Login im Web-GUI:
 ### Bedienung
 
 1. **"Gruppen laden"** klicken — ruft alle Microsoft 365-Gruppen ab
-2. Pro Gruppe **"Details laden"** klicken — lädt Notebooks und Plans (oder **"Alle Details laden"** für Batch-Abruf)
-3. **"Migrieren →"** Buttons bei Notebooks und Plans — öffnet die jeweilige Migration mit vorausgefüllten IDs
+2. Pro Gruppe **"Details laden"** klicken — lädt Notebooks, Plans und **Teams-Channels** (oder **"Alle Details laden"** für Batch-Abruf)
+3. **"Migrieren →"** Buttons bei Notebooks, Plans **und Channels** — öffnet die jeweilige Migration mit vorausgefüllten IDs. Im Spaltenkopf der Channels-Liste gibt es zusätzlich **"Alle →"**, das alle Channels eines Teams auf einmal in der Teams-Migration vorauswählt.
 4. **IDs kopieren** — Text in den ID-Feldern ist direkt selektierbar (`user-select: all`)
 
 ### Lazy-Loading
@@ -126,9 +134,12 @@ Das Web-GUI lädt Details nicht automatisch für alle Gruppen, um bei großen Te
 | Endpoint | Methode | Beschreibung |
 |----------|---------|--------------|
 | `/api/overview/groups` | GET | Alle Microsoft 365-Gruppen |
-| `/api/overview/groups/<id>/details` | GET | Notebooks + Plans einer Gruppe |
+| `/api/overview/groups/<id>/details` | GET | Notebooks + Plans + Teams-Channels einer Gruppe |
 | `/api/planner/migrate` | POST | Planner-Migration starten (Background-Thread) |
 | `/api/onenote/migrate` | POST | OneNote-Migration starten (Background-Thread) |
+| `/api/teams/migrate` | POST | Teams-Migration starten (Background-Thread) |
+| `/api/teams/list` | GET | Teams (für Teams-Dashboard) |
+| `/api/teams/<team_id>/channels` | GET | Channels eines Teams |
 | `/api/tasks/<id>/events` | GET | SSE-Stream für Live-Fortschritt |
 | `/api/tasks/<id>/status` | GET | Task-Status (Fallback für Reconnect) |
 
@@ -159,9 +170,16 @@ Das Web-GUI lädt Details nicht automatisch für alle Gruppen, um bei großen Te
   "plans": [
     {"id": "xYz789...", "title": "Sprint Board"}
   ],
-  "plans_error": null
+  "plans_error": null,
+  "teams_channels": [
+    {"id": "19:abc...", "displayName": "Allgemein", "membershipType": "standard"},
+    {"id": "19:def...", "displayName": "Architektur", "membershipType": "private"}
+  ],
+  "teams_channels_error": null
 }
 ```
+
+> Das Feld `teams_channels` ist nur befüllt, wenn die Gruppe als Teams-Team provisioniert ist (Property `resourceProvisioningOptions` enthält `"Team"`). Andernfalls bleibt die Liste leer.
 
 ---
 
@@ -174,8 +192,11 @@ Das Overview-Tool nutzt ausschließlich bereits konfigurierte Scopes:
 | `Group.Read.All` | Gruppen auflisten |
 | `Notes.Read.All` | Notebooks pro Gruppe abrufen |
 | `Tasks.Read.All` | Planner-Pläne pro Gruppe abrufen |
+| `Channel.ReadBasic.All` | Teams-Channels listen (Discovery, gratis) |
+| `Team.ReadBasic.All` | Team-Provisioning prüfen |
+| `ChannelMessage.Read.All` | _Erst beim Migrieren_ — Pay-per-API |
 
-Keine zusätzlichen Azure AD Permissions erforderlich.
+Channel-**Discovery** (Listing) ist gratis. Erst das eigentliche Lesen der `messages`-Endpoints in der Teams-Migration löst Microsofts Pay-per-API-Abrechnung aus.
 
 ### Einschränkungen nach Auth-Modus
 
@@ -242,6 +263,8 @@ Write-Host "`n$added Gruppen hinzugefuegt (von $($groups.Count) gesamt)"
 | `GET /groups?$filter=groupTypes/any(c:c eq 'Unified')` | Microsoft 365-Gruppen (filtert Security Groups etc. heraus) |
 | `GET /groups/{id}/onenote/notebooks` | OneNote-Notebooks einer Gruppe |
 | `GET /groups/{id}/planner/plans` | Planner-Pläne einer Gruppe |
+| `GET /groups/{id}?$select=resourceProvisioningOptions` | Prüft, ob die Gruppe als Team provisioniert ist |
+| `GET /teams/{id}/channels` | Teams-Channels einer Gruppe (sofern Team provisioniert) |
 
 ### Fehlerbehandlung
 

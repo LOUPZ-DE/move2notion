@@ -209,7 +209,7 @@ class NotionClient:
     def update_block(self, block_id: str, content: Optional[Dict[str, Any]] = None, archived: bool = False) -> None:
         """
         Block aktualisieren.
-        
+
         Args:
             block_id: Block-ID
             content: Block-Content (z.B. {"paragraph": {"rich_text": [...]}})
@@ -220,9 +220,55 @@ class NotionClient:
             data.update(content)
         if archived:
             data["archived"] = archived
-        
+
         if data:
             self._make_request("PATCH", f"/blocks/{block_id}", json=data)
+
+    def delete_block(self, block_id: str) -> None:
+        """Block per DELETE entfernen.
+
+        Notion archiviert Bloecke; ein DELETE-Request hat den gleichen Effekt
+        wie `update_block(archived=True)`, ist aber semantisch eindeutiger.
+        """
+        url = f"https://api.notion.com/v1/blocks/{block_id}"
+        for attempt in range(3):
+            if attempt > 0:
+                time.sleep(1.5 * attempt)
+            try:
+                response = requests.delete(url, headers=self._get_headers())
+                if response.status_code == 429:
+                    time.sleep(int(response.headers.get("Retry-After", 2)))
+                    continue
+                if response.status_code >= 500 and attempt < 2:
+                    time.sleep(2 * (attempt + 1))
+                    continue
+                if not response.ok:
+                    raise NotionAPIError(f"Notion API error: {response.status_code} - {response.text}")
+                return
+            except (requests.exceptions.ConnectionError, requests.exceptions.ChunkedEncodingError):
+                if attempt == 2:
+                    raise
+
+    def delete_all_block_children(self, block_id: str) -> int:
+        """Alle Kind-Bloecke einer Page/eines Blocks loeschen (fuer Rebuild).
+
+        Verwendet primaer DELETE; bei Fehlern fallback auf
+        `update_block(archived=True)`. Gibt die Anzahl entfernter Bloecke zurueck.
+        """
+        children = self.get_all_block_children(block_id)
+        for child in children:
+            child_id = child.get("id")
+            if not child_id:
+                continue
+            try:
+                self.delete_block(child_id)
+            except NotionAPIError:
+                try:
+                    self.update_block(child_id, archived=True)
+                except NotionAPIError:
+                    print(f"[⚠] Block {child_id} konnte nicht entfernt werden")
+            time.sleep(self.auth.notion_pool.batch_sleep)
+        return len(children)
     
     def append_blocks(self, block_id: str, children: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Blöcke an bestehende Seite anhängen.

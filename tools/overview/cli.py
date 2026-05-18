@@ -114,6 +114,7 @@ Beispiele:
                 "description": group.get("description", ""),
                 "notebooks": [],
                 "plans": [],
+                "teams_channels": [],
             }
 
             if not self.args.groups_only:
@@ -144,12 +145,34 @@ Beispiele:
                     if self.args.verbose:
                         print(f"  [WARNUNG] Plans fuer '{group_name}' nicht abrufbar: {e}")
 
+                # Teams Channels (nur Delegated, nur falls Gruppe ein Team ist)
+                if self.is_application_mode:
+                    entry["teams_channels_error"] = "Nicht verfuegbar im Application-Modus"
+                else:
+                    try:
+                        if self.ms_graph.group_has_team(group_id):
+                            channels = self.ms_graph.list_team_channels(group_id)
+                            entry["teams_channels"] = [
+                                {
+                                    "id": ch.get("id", ""),
+                                    "name": ch.get("displayName", ""),
+                                    "membershipType": ch.get("membershipType", "standard"),
+                                }
+                                for ch in channels
+                            ]
+                    except Exception as e:
+                        entry["teams_channels_error"] = str(e)
+                        if self.args.verbose:
+                            print(f"  [WARNUNG] Channels fuer '{group_name}' nicht abrufbar: {e}")
+
             results.append(entry)
 
             if self.args.verbose and not self.args.json:
                 nb_count = len(entry.get("notebooks", []))
                 plan_count = len(entry.get("plans", []))
-                print(f"  [{i + 1}/{len(groups)}] {group_name}: {nb_count} Notebooks, {plan_count} Plans")
+                ch_count = len(entry.get("teams_channels", []))
+                print(f"  [{i + 1}/{len(groups)}] {group_name}: "
+                      f"{nb_count} Notebooks, {plan_count} Plans, {ch_count} Channels")
 
         # Ausgabe
         if self.args.json:
@@ -198,12 +221,26 @@ Beispiele:
             elif not self.args.groups_only:
                 print(f"\n  Planner-Plaene: keine")
 
+            # Teams Channels
+            channels = entry.get("teams_channels", [])
+            if channels:
+                print(f"\n  Teams-Channels ({len(channels)}):")
+                for ch in channels:
+                    print(f"    - {ch['name']}  ({ch.get('membershipType', 'standard')})")
+                    print(f"      ID: {ch['id']}")
+            elif "teams_channels_error" in entry:
+                print(f"\n  Teams-Channels: [Fehler] {entry['teams_channels_error']}")
+            elif not self.args.groups_only:
+                print(f"\n  Teams-Channels: keine (Gruppe ist evtl. kein Team)")
+
         # Zusammenfassung
         total_notebooks = sum(len(e.get("notebooks", [])) for e in results)
         total_plans = sum(len(e.get("plans", [])) for e in results)
+        total_channels = sum(len(e.get("teams_channels", [])) for e in results)
         print(f"\n{'=' * 70}")
         print(f"  Zusammenfassung: {len(results)} Gruppen, "
-              f"{total_notebooks} Notebooks, {total_plans} Planner-Plaene")
+              f"{total_notebooks} Notebooks, {total_plans} Planner-Plaene, "
+              f"{total_channels} Teams-Channels")
         print(f"{'=' * 70}")
 
 

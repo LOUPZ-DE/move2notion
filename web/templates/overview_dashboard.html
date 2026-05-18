@@ -5,7 +5,7 @@
 {% block content %}
 <div class="migration-dashboard">
     <h2>Microsoft 365 Overview</h2>
-    <p class="subtitle">Alle Teams-Gruppen mit Notebooks und Planner-Pl&auml;nen</p>
+    <p class="subtitle">Alle Teams-Gruppen mit Notebooks, Planner-Pl&auml;nen und Channels</p>
 
     <div class="form-section">
         <div class="overview-header-row">
@@ -156,7 +156,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 '<button class="btn btn-secondary btn-load-details" data-group-id="' + group.id + '">Details laden</button>' +
             '</div>' +
             '<div class="overview-details hidden" id="details-' + group.id + '">' +
-                '<div class="overview-columns">' +
+                '<div class="overview-columns overview-columns-3">' +
                     '<div class="overview-col">' +
                         '<h4>OneNote Notebooks</h4>' +
                         '<div class="overview-items" id="notebooks-' + group.id + '">-</div>' +
@@ -164,6 +164,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     '<div class="overview-col">' +
                         '<h4>Planner-Pl\u00e4ne</h4>' +
                         '<div class="overview-items" id="plans-' + group.id + '">-</div>' +
+                    '</div>' +
+                    '<div class="overview-col">' +
+                        '<div class="overview-col-header">' +
+                            '<h4>Teams Channels</h4>' +
+                            '<a href="/teams?team_id=' + encodeURIComponent(group.id) + '" class="btn btn-xs btn-action overview-col-action" title="Alle Channels migrieren">Alle &rarr;</a>' +
+                        '</div>' +
+                        '<div class="overview-items" id="teams-channels-' + group.id + '">-</div>' +
                     '</div>' +
                 '</div>' +
             '</div>';
@@ -223,6 +230,7 @@ document.addEventListener('DOMContentLoaded', function() {
         var detailsDiv = document.getElementById('details-' + groupId);
         var notebooksDiv = document.getElementById('notebooks-' + groupId);
         var plansDiv = document.getElementById('plans-' + groupId);
+        var teamsDiv = document.getElementById('teams-channels-' + groupId);
 
         detailsDiv.classList.remove('hidden');
 
@@ -261,6 +269,27 @@ document.addEventListener('DOMContentLoaded', function() {
                     '<a href="/planner?plan_id=' + encodeURIComponent(p.id) + '" class="btn btn-sm btn-action" title="Zur Planner-Migration">Migrieren &rarr;</a>' +
                 '</div>';
             }).join('');
+        }
+
+        // Teams Channels
+        if (teamsDiv) {
+            if (data.teams_channels_error) {
+                teamsDiv.innerHTML = '<span class="overview-noaccess-text">' + escapeHtml(data.teams_channels_error) + '</span>';
+            } else if (!data.teams_channels || data.teams_channels.length === 0) {
+                teamsDiv.innerHTML = '<span class="overview-empty">Kein Team / keine Channels</span>';
+            } else {
+                teamsDiv.innerHTML = data.teams_channels.map(function(ch) {
+                    var typeLabel = ch.membershipType ? '<span class="overview-meta">' + escapeHtml(ch.membershipType) + '</span>' : '';
+                    var url = '/teams?team_id=' + encodeURIComponent(groupId) + '&channel_id=' + encodeURIComponent(ch.id);
+                    return '<div class="overview-item">' +
+                        '<div class="overview-item-info">' +
+                            '<strong>' + escapeHtml(ch.displayName) + '</strong> ' + typeLabel +
+                            '<code class="overview-id">' + ch.id + '</code>' +
+                        '</div>' +
+                        '<a href="' + url + '" class="btn btn-sm btn-action" title="Zur Teams-Migration">Migrieren &rarr;</a>' +
+                    '</div>';
+                }).join('');
+            }
         }
     }
 
@@ -419,19 +448,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 notebooks: details && !details.notebooks_error ? details.notebooks : [],
                 notebooks_error: details ? details.notebooks_error || null : null,
                 plans: details && !details.plans_error ? details.plans : [],
-                plans_error: details ? details.plans_error || null : null
+                plans_error: details ? details.plans_error || null : null,
+                teams_channels: details && !details.teams_channels_error ? (details.teams_channels || []) : [],
+                teams_channels_error: details ? details.teams_channels_error || null : null
             };
         });
     }
 
     function buildCsv(data) {
         var sep = ';';
-        var headers = ['Gruppenname', 'Mail', 'Beschreibung', 'Notebooks (Anzahl)', 'Notebook-Namen', 'Plans (Anzahl)', 'Plan-Namen', 'Plan-IDs'];
+        var headers = ['Gruppenname', 'Mail', 'Beschreibung',
+                       'Notebooks (Anzahl)', 'Notebook-Namen',
+                       'Plans (Anzahl)', 'Plan-Namen', 'Plan-IDs',
+                       'Channels (Anzahl)', 'Channel-Namen', 'Channel-IDs'];
         var lines = [headers.join(sep)];
         data.forEach(function(g) {
             var nbNames = g.notebooks.map(function(nb) { return nb.displayName; }).join(', ');
             var planNames = g.plans.map(function(p) { return p.title; }).join(', ');
             var planIds = g.plans.map(function(p) { return p.id; }).join(', ');
+            var channels = g.teams_channels || [];
+            var chNames = channels.map(function(c) { return c.displayName; }).join(', ');
+            var chIds = channels.map(function(c) { return c.id; }).join(', ');
             lines.push([
                 csvEscape(g.displayName),
                 csvEscape(g.mail),
@@ -440,7 +477,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 csvEscape(nbNames),
                 g.plans.length,
                 csvEscape(planNames),
-                csvEscape(planIds)
+                csvEscape(planIds),
+                channels.length,
+                csvEscape(chNames),
+                csvEscape(chIds)
             ].join(sep));
         });
         return '\uFEFF' + lines.join('\r\n');

@@ -5,6 +5,43 @@ Alle nennenswerten Änderungen an diesem Projekt werden hier dokumentiert.
 Das Format basiert auf [Keep a Changelog](https://keepachangelog.com/de/)
 und das Projekt folgt [Semantic Versioning](https://semver.org/lang/de/).
 
+## [0.10.0] - 2026-05-07
+
+### Hinzugefuegt
+- **Teams Channel Migration**: Komplett neues Tool `tools/teams_migration/` zur Migration von Microsoft Teams Channels nach Notion.
+  - **CLI**: `python -m tools.teams_migration.cli --team-id <id> --database-id <db>` (Argumente `--team-name`, `--channel-id`, `--state-path`, `--dry-run`, `--verbose`).
+  - **Web-Dashboard** unter `/teams`: Team-Picker → Channel-Picker (Multi-Select) → Notion-DB-Konfiguration → Migration mit SSE-Live-Fortschritt und Cancel-Button.
+  - **Pro Channel eine Notion-Page** mit chronologischem Chat-Verlauf. Pro Top-Level-Beitrag ein Toggle-Block mit Header `**Absender** · _Datum_ · Vorschau`.
+  - **Replies** als verschachtelte Toggles unter dem Parent-Beitrag.
+  - **Reactions** (👍 ❤️ 😂 …) als kursive Zeile am Ende jedes Beitrags, gruppiert nach Reaction-Typ.
+  - **@Mentions** als Inline-Markup (blau, `mailto:`-Link sofern vorhanden).
+  - **Inline-Bilder** (`hostedContents`) werden via Notion File Upload API als Image-Blocks materialisiert.
+  - **Datei-Anhänge** (SharePoint/OneDrive) als Bookmark-Blocks (kein Re-Upload).
+  - **Rebuild-Idempotenz**: Wiederholungslauf löscht alle bestehenden Bloecke der Channel-Page und schreibt den Verlauf neu.
+- **Overview-Integration**: Pro M365-Gruppe wird eine dritte Spalte „Teams Channels" im Overview-Dashboard und in `tools.overview.cli` angezeigt.
+  - „Migrieren →"-Button pro Channel führt zu `/teams?team_id=<id>&channel_id=<id>` mit Vorauswahl.
+  - „Alle →"-Link im Spaltenkopf öffnet das Teams-Dashboard mit dem Team vorausgewählt (alle Channels).
+  - Channel-Listing kostet keine Pay-per-API-Quote — nur das Lesen der Messages in der eigentlichen Migration.
+  - CSV/JSON-Export im Overview enthält neu `teams_channels` pro Gruppe.
+- **Microsoft Graph Client**: Neue Methoden in `core/ms_graph_client.py` — `list_joined_teams`, `get_team`, `list_team_channels`, `group_has_team`, `list_channel_messages`, `list_channel_message_replies`, `get_message_hosted_content`. `Prefer: include-unknown-enum-members` automatisch gesetzt für Forward-Compatibility mit neuen Microsoft-Enum-Werten.
+- **Notion Client**: Neue Methoden `delete_block` und `delete_all_block_children` in `core/notion_client.py` für Rebuild-Operationen.
+- **State Manager**: Neue Helferfunktion `generate_channel_key(team_id, channel_id)` in `core/state_manager.py`.
+- **Teams-Schema** (Notion): `Channel`, `Team`, `ChannelType`, `ChannelId`, `TeamId`, `CreatedDateTime`, `LastSync`, `MessageCount`, `WebUrl` — wird beim ersten Lauf automatisch angelegt.
+- **`tests/diagnose_teams_api.py`**: Neues Diagnose-Skript zur Validierung von User-Lizenz, Consent und Channel-Mitgliedschaft vor der Migration.
+- **Dokumentation**: Neue Datei `documentation/TEAMS.md` mit vollständiger Anleitung. Erweiterungen in `documentation/OVERVIEW.md`, `documentation/WEB_GUI.md`, `documentation/APPLICATION_PERMISSIONS.md`. Landing-Page `docs/index.html` aktualisiert.
+
+### Geändert
+- **Scopes (`core/auth.py`)**: Default-Scopes erweitert um `ChannelMessage.Read.All`, `Channel.ReadBasic.All`, `Team.ReadBasic.All`. Hardcoded-Fallbacks in `MicrosoftWebAuthenticator` auf `config.ms_scopes` umgestellt (entfernt Doppelpflege).
+- **`.env.example`**: `MS_GRAPH_SCOPES` enthält jetzt die Teams-Scopes.
+- **Web-GUI**: Tile „Teams Migration" auf dem Haupt-Dashboard, Navbar-Link „Teams" in `web/templates/base.html`. Schema „teams" für `POST /api/notion/create-database`.
+- **Overview-Layout**: 3-Spalten-Grid (`overview-columns-3`) für Notebooks / Plans / Channels. CSS in `web/static/style.css` ergänzt.
+
+### Bekannte Einschränkungen
+- **User-M365-Lizenz erforderlich**: Der eingeloggte Benutzer braucht eine gültige Microsoft-365-Lizenz mit Teams-Funktion. Dedizierte Admin-Accounts ohne zugewiesene Lizenz erhalten `403 Forbidden — Failed to get license information for the user`. Lösung: Lizenz zuweisen oder mit normalem User-Account einloggen.
+- **Application-Modus** (Client Credentials) für Teams-Migration aktuell **nicht unterstützt** — die `messages`-Endpoints sind in App-Only-Modus zusätzlich Pay-per-API-pflichtig (siehe documentation/APPLICATION_PERMISSIONS.md). Delegated-Modus hat diese Einschränkung nicht.
+- **Notion-Page-Größenlimit ~100 MB**: Channels mit >10k Messages oder vielen großen Inline-Bildern können an Grenzen stoßen (Future-Work: `--split-by month/quarter/year`).
+- **`$expand=replies`-Truncation**: Bei sehr langen Reply-Threads kann Microsoft Replies abschneiden; Reply-Fallback-Endpoint ist vorbereitet, aber noch nicht automatisch aktiv.
+
 ## [0.9.10] - 2026-03-23
 
 ### Behoben

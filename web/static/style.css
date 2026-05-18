@@ -978,12 +978,41 @@ footer a:hover {
     border-top: 1px solid var(--border-color);
 }
 
+.overview-columns-3 {
+    grid-template-columns: 1fr 1fr 1fr;
+}
+
 .overview-col h4 {
     margin-bottom: 12px;
     font-size: 14px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-light);
+}
+
+.overview-col-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.overview-col-header h4 {
+    margin-bottom: 0;
+}
+
+.overview-col-action {
+    font-size: 11px;
+    padding: 2px 8px;
+}
+
+.overview-meta {
+    color: var(--text-light);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-left: 6px;
 }
 
 .overview-item {
@@ -1078,7 +1107,8 @@ footer a:hover {
         padding: 24px;
     }
 
-    .overview-columns {
+    .overview-columns,
+    .overview-columns-3 {
         grid-template-columns: 1fr;
     }
 

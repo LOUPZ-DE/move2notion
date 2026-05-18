@@ -89,6 +89,11 @@ def generate_page_key(site_id: str, notebook_id: str, section_id: str, page_id: 
     return f"{site_id}:{notebook_id}:{section_id}:{page_id}"
 
 
+def generate_channel_key(team_id: str, channel_id: str) -> str:
+    """Eindeutigen Schlüssel für einen Teams-Channel generieren."""
+    return f"teams:{team_id}:{channel_id}"
+
+
 def calculate_checksum(content: bytes) -> str:
     """MD5-Checksumme für Content berechnen."""
     return hashlib.md5(content).hexdigest()

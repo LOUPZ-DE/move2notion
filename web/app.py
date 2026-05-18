@@ -21,7 +21,7 @@ from web.task_manager import task_manager, TaskStatus, emit_progress, emit_compl
 
 def print_banner(port: int):
     """Startup-Banner mit ASCII-Art ausgeben."""
-    VERSION = "0.9.10"
+    VERSION = "0.10.0"
     C = "\033[36m"    # Cyan
     B = "\033[1;34m"  # Bold Blue
     W = "\033[1;37m"  # Bold White
@@ -71,6 +71,67 @@ def _friendly_graph_error(error_msg: str) -> str:
     if "404" in error_msg:
         return "Nicht gefunden"
     return error_msg
+
+
+def _format_graph_error(error_msg: str) -> tuple:
+    """Extrahiert error.message aus einer JSON-Antwort und liefert einen
+    benutzerfreundlichen Text + optionalen Loesungs-Hinweis.
+
+    Returns:
+        (friendly, hint) — `friendly` enthaelt die kurze, lesbare Fehlermeldung,
+        `hint` einen kontextuellen Loesungsvorschlag (oder leeren String).
+    """
+    # Status-Code extrahieren
+    status = ""
+    for code in ("400", "401", "403", "404", "429", "500", "502", "503", "504"):
+        if code in error_msg:
+            status = code
+            break
+
+    # Microsoft schickt JSON nach " - {…}" im Exception-Text
+    ms_message = ""
+    try:
+        if " - {" in error_msg:
+            json_part = error_msg.split(" - ", 1)[1]
+            data = json.loads(json_part)
+            err = (data.get("error") or {})
+            ms_message = err.get("message") or ""
+    except (ValueError, IndexError):
+        pass
+
+    friendly = ms_message or error_msg
+    hint = ""
+
+    low = (ms_message or error_msg).lower()
+    if "license information for the user" in low or "office365 license" in low:
+        hint = (
+            "Loesung: Der eingeloggte Benutzer benoetigt eine Microsoft-365-/"
+            "Office-365-Lizenz mit Teams. Dedizierte Admin-Accounts ohne "
+            "zugewiesene Lizenz koennen die Channel-Messages-API nicht nutzen. "
+            "Entweder dem Account im M365 Admin Center eine Lizenz zuweisen "
+            "oder mit einem normalen User-Account einloggen."
+        )
+    elif status == "403" and "channelmessage" in low:
+        hint = (
+            "Loesung: 'ChannelMessage.Read.All' wurde nicht consented. "
+            "Bitte /login?reconsent=1 aufrufen und Berechtigung erneut bestaetigen."
+        )
+    elif status == "403":
+        hint = (
+            "Loesung: Der eingeloggte User ist evtl. kein Mitglied dieses Teams, "
+            "oder eine Conditional-Access-Policy blockiert den Zugriff."
+        )
+    elif status == "429":
+        hint = "Rate-Limit erreicht — Retry erfolgt automatisch im naechsten Lauf."
+    elif "license" in low:
+        hint = (
+            "Loesung: Der zugreifende User braucht eine M365-/Office-365-Lizenz "
+            "mit Teams-Funktion."
+        )
+
+    if status:
+        friendly = f"{status} — {friendly}"
+    return friendly, hint
 
 
 def verify_admin_password(password: str) -> bool:
@@ -136,7 +197,13 @@ def login():
     if "session_id" not in session:
         session["session_id"] = secrets.token_urlsafe(32)
 
-    auth_url = web_auth_manager.microsoft.get_auth_url(session["session_id"])
+    # ?reconsent=1 erzwingt den Microsoft Consent-Screen — noetig, wenn neue
+    # Scopes in der App-Registration hinzugekommen sind und Browser-SSO sonst
+    # still einen Token mit den alten Scopes ausgeben wuerde.
+    prompt = "consent" if request.args.get("reconsent") else None
+    auth_url = web_auth_manager.microsoft.get_auth_url(
+        session["session_id"], prompt=prompt
+    )
     return render_template("login.html", auth_url=auth_url)
 
 
@@ -723,6 +790,27 @@ def get_group_details(group_id):
         except Exception as e:
             plans_error = _friendly_graph_error(str(e))
 
+        # Teams-Channels (nur falls Gruppe ein Team ist)
+        teams_channels = []
+        teams_channels_error = None
+        if is_application_mode():
+            # Application-Modus: Pay-per-API-Lizenz erfordert Delegated-Token
+            teams_channels_error = "Im Application-Modus nicht unterstuetzt (Delegated Auth erforderlich)"
+        else:
+            try:
+                if client.group_has_team(group_id):
+                    raw_channels = client.list_team_channels(group_id)
+                    teams_channels = [
+                        {
+                            "id": ch.get("id", ""),
+                            "displayName": ch.get("displayName", ""),
+                            "membershipType": ch.get("membershipType", "standard"),
+                        }
+                        for ch in raw_channels
+                    ]
+            except Exception as e:
+                teams_channels_error = _friendly_graph_error(str(e))
+
         return jsonify({
             "group_id": group_id,
             "site_url": site_url,
@@ -730,9 +818,237 @@ def get_group_details(group_id):
             "notebooks_error": notebooks_error,
             "plans": plans,
             "plans_error": plans_error,
+            "teams_channels": teams_channels,
+            "teams_channels_error": teams_channels_error,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+# ===== Teams-Migration Routes =====
+
+@app.route("/teams")
+def teams_dashboard():
+    """Teams-Migration Dashboard."""
+    if "authenticated" not in session:
+        return redirect(url_for("login"))
+    return render_template("teams_dashboard.html")
+
+
+@app.route("/api/teams/list", methods=["GET"])
+def list_teams():
+    """Alle Teams auflisten, in denen der angemeldete User Mitglied ist."""
+    if "authenticated" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    if is_application_mode():
+        return jsonify({
+            "error": "Teams-Migration ist im Application-Modus nicht verfuegbar. "
+                     "Bitte MS_AUTH_MODE=delegated nutzen."
+        }), 400
+
+    try:
+        from core.ms_graph_client import MSGraphClient
+        client = MSGraphClient(web_auth_manager, session_id=session.get("session_id"))
+        teams = client.list_joined_teams()
+        return jsonify({
+            "teams": [
+                {
+                    "id": t.get("id", ""),
+                    "displayName": t.get("displayName", ""),
+                    "description": t.get("description", ""),
+                }
+                for t in teams
+            ]
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/teams/<team_id>/channels", methods=["GET"])
+def get_team_channels(team_id):
+    """Channels eines Teams abrufen."""
+    if "authenticated" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    if is_application_mode():
+        return jsonify({"error": "Teams-Migration im Application-Modus nicht verfuegbar."}), 400
+
+    try:
+        from core.ms_graph_client import MSGraphClient
+        client = MSGraphClient(web_auth_manager, session_id=session.get("session_id"))
+        channels = client.list_team_channels(team_id)
+        return jsonify({
+            "team_id": team_id,
+            "channels": [
+                {
+                    "id": c.get("id", ""),
+                    "displayName": c.get("displayName", ""),
+                    "membershipType": c.get("membershipType", "standard"),
+                    "description": c.get("description", ""),
+                }
+                for c in channels
+            ]
+        })
+    except Exception as e:
+        return jsonify({"error": _friendly_graph_error(str(e))}), 500
+
+
+@app.route("/api/teams/migrate", methods=["POST"])
+def start_teams_migration():
+    """Teams-Channel-Migration als Background-Task starten."""
+    if "authenticated" not in session:
+        return jsonify({"error": "Not authenticated"}), 401
+    if is_application_mode():
+        return jsonify({"error": "Teams-Migration im Application-Modus nicht verfuegbar."}), 400
+
+    data = request.json or {}
+    team_id = data.get("team_id")
+    channel_ids = data.get("channel_ids") or []  # Leer = alle Channels
+    database_id = data.get("database_id")
+
+    if not team_id:
+        return jsonify({"error": "team_id required"}), 400
+    if not database_id:
+        return jsonify({"error": "database_id required"}), 400
+
+    session_id = session.get("session_id")
+
+    task = task_manager.create_task("teams")
+    thread = threading.Thread(
+        target=_run_teams_migration,
+        args=(task, team_id, channel_ids, database_id, session_id),
+        daemon=True,
+    )
+    task.thread = thread
+    task.status = TaskStatus.RUNNING
+    thread.start()
+
+    return jsonify({"task_id": task.task_id, "status": "started"})
+
+
+def _run_teams_migration(task, team_id, channel_ids, database_id, session_id):
+    """Teams-Migration im Background-Thread."""
+    web_auth_manager.notion_pool.register_worker()
+    try:
+        from core.ms_graph_client import MSGraphClient, MSGraphAPIError
+        from core.notion_client import NotionClient
+        from tools.teams_migration.teams_api_mapper import map_channel_raw, map_message_raw
+        from tools.teams_migration.content_mapper import TeamsContentMapper
+
+        ms_client = MSGraphClient(web_auth_manager, session_id=session_id)
+        notion_client = NotionClient(auth_manager_instance=web_auth_manager)
+
+        # 1. Team-Infos
+        emit_progress(task, 1, "Lade Team-Informationen...", phase="Team")
+        try:
+            team_obj = ms_client.get_team(team_id)
+        except MSGraphAPIError as e:
+            emit_progress(task, 0, f"Team konnte nicht geladen werden: {e}", log_type="error")
+            emit_complete(task, success=False)
+            return
+        team_name = team_obj.get("displayName") or "(Team)"
+        emit_progress(task, 3, f"Team: {team_name}", log_type="success")
+
+        mapper = TeamsContentMapper(
+            notion_client, ms_client, team_id, team_name,
+            progress_callback=lambda m: emit_progress(task, task.progress, m),
+        )
+
+        # 2. Schema sicherstellen
+        emit_progress(task, 5, "Pruefe Datenbank-Schema...", phase="DB vorbereiten")
+        mapper.ensure_database_schema(database_id)
+
+        # 3. Channels laden
+        emit_progress(task, 8, "Lade Channels...", phase="Channels laden")
+        try:
+            raw_channels = ms_client.list_team_channels(team_id)
+        except MSGraphAPIError as e:
+            emit_progress(task, 0, f"Channels konnten nicht geladen werden: {e}", log_type="error")
+            emit_complete(task, success=False)
+            return
+
+        all_channels = [map_channel_raw(c) for c in raw_channels]
+        if channel_ids:
+            wanted = set(channel_ids)
+            channels = [c for c in all_channels if c.id in wanted]
+        else:
+            channels = all_channels
+
+        if not channels:
+            emit_progress(task, 0, "Keine passenden Channels gefunden", log_type="error")
+            emit_complete(task, success=False)
+            return
+
+        task.total_items = len(channels)
+        emit_progress(task, 10, f"{len(channels)} Channel(s) zu migrieren", log_type="success")
+
+        # 4. Pro Channel: Messages laden und migrieren
+        for idx, channel in enumerate(channels):
+            if task.cancelled.is_set():
+                emit_progress(task, task.progress, "Migration abgebrochen",
+                              log_type="warning", phase="Abgebrochen")
+                emit_cancelled(task)
+                return
+
+            base_progress = 10 + int(idx / len(channels) * 85)
+            emit_progress(task, base_progress,
+                          f"[{idx+1}/{len(channels)}] Channel: {channel.display_name}",
+                          phase="Migration")
+
+            try:
+                raw_messages = ms_client.list_channel_messages(team_id, channel.id)
+            except MSGraphAPIError as e:
+                raw = str(e)
+                # Volle Microsoft-Antwort fuer Diagnose nach Server-stdout
+                print(f"[Teams][{channel.display_name}] {raw}", flush=True)
+                friendly, hint = _format_graph_error(raw)
+                emit_progress(
+                    task, base_progress,
+                    f"Messages fuer '{channel.display_name}' fehlgeschlagen: {friendly}",
+                    log_type="error"
+                )
+                if hint:
+                    emit_progress(task, base_progress, hint, log_type="warning")
+                task.error_count += 1
+                continue
+
+            messages = [map_message_raw(m) for m in raw_messages]
+            reply_count = sum(len(m.replies) for m in messages)
+            emit_progress(
+                task, base_progress + 1,
+                f"    {len(messages)} Beitraege ({reply_count} Replies) — schreibe nach Notion..."
+            )
+
+            try:
+                result = mapper.migrate_channel(channel, messages, database_id)
+                task.success_count += 1
+                end_progress = 10 + int((idx + 1) / len(channels) * 85)
+                emit_progress(
+                    task, end_progress,
+                    f"    ✓ {channel.display_name}: {result['message_count']} Messages "
+                    f"({result['failed_blocks']} Bloecke uebersprungen)",
+                    log_type="success"
+                )
+            except Exception as e:
+                task.error_count += 1
+                task.errors.append({"task": channel.display_name, "error": str(e)})
+                emit_progress(
+                    task, base_progress + 2,
+                    f"    ✘ Fehler bei '{channel.display_name}': {e}",
+                    log_type="error"
+                )
+
+        summary = (
+            f"Migration abgeschlossen: {task.success_count} Channels migriert, "
+            f"{task.error_count} fehlgeschlagen"
+        )
+        emit_progress(task, 98, summary, log_type="success", phase="Abgeschlossen")
+        emit_complete(task, success=task.error_count == 0 or task.success_count > 0)
+
+    except Exception as e:
+        emit_progress(task, task.progress, f"Fataler Fehler: {e}", log_type="error")
+        emit_complete(task, success=False)
+    finally:
+        web_auth_manager.notion_pool.unregister_worker()
 
 
 # ===== Notion-Datenbank erstellen =====
@@ -752,8 +1068,8 @@ def create_notion_database():
         return jsonify({"error": "parent_page_id required"}), 400
     if not title:
         return jsonify({"error": "title required"}), 400
-    if db_type not in ("onenote", "planner"):
-        return jsonify({"error": "type must be 'onenote' or 'planner'"}), 400
+    if db_type not in ("onenote", "planner", "teams"):
+        return jsonify({"error": "type must be 'onenote', 'planner' or 'teams'"}), 400
 
     try:
         from core.notion_client import NotionClient
@@ -766,6 +1082,9 @@ def create_notion_database():
             from tools.onenote_migration.content_mapper import ContentMapper
             properties = {"Name": {"title": {}}}
             properties.update(ContentMapper.BASE_PROPERTIES)
+        elif db_type == "teams":
+            from tools.teams_migration.content_mapper import TeamsContentMapper
+            properties = dict(TeamsContentMapper.BASE_PROPERTIES)
         else:
             from tools.planner_migration.notion_mapper import NotionMapper
             properties = dict(NotionMapper.BASE_PROPERTIES)

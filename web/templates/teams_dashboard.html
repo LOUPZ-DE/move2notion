@@ -1,0 +1,352 @@
+{% extends "base.html" %}
+
+{% block title %}Teams Migration - MS &rarr; Notion Migration{% endblock %}
+
+{% block content %}
+<div class="migration-dashboard">
+    <h2>Teams Migration</h2>
+    <p class="subtitle">Migriere Microsoft Teams Channels und Beitr&auml;ge zu Notion</p>
+
+    <div class="form-section">
+        <h3>1. Team ausw&auml;hlen</h3>
+        <p class="status-text" style="text-align: left; margin-top: 6px;">
+            Listet alle Teams auf, in denen du Mitglied bist (Delegated-Login).
+        </p>
+        <div class="action-row">
+            <button id="load-teams-btn" class="btn btn-primary">Teams laden</button>
+            <span id="teams-status" class="status-text"></span>
+        </div>
+    </div>
+
+    <div id="teams-section" class="form-section hidden">
+        <h3>2. Team</h3>
+        <div class="form-group">
+            <label for="team_select">Team:</label>
+            <select id="team_select" class="form-control"></select>
+        </div>
+        <div class="action-row">
+            <button id="load-channels-btn" class="btn btn-primary">Channels laden</button>
+        </div>
+    </div>
+
+    <div id="channels-section" class="hidden">
+        <div class="form-section">
+            <div class="overview-header-row">
+                <h3>3. Channels ausw&auml;hlen</h3>
+                <div class="overview-header-actions">
+                    <button type="button" id="select-all-channels" class="btn btn-secondary btn-sm">Alle</button>
+                    <button type="button" id="deselect-all-channels" class="btn btn-secondary btn-sm">Keine</button>
+                </div>
+            </div>
+            <p class="status-text" style="text-align: left; margin-top: 6px;">
+                Pro Channel wird eine Notion-Page mit dem chronologischen Verlauf erstellt.
+            </p>
+            <div id="channels-list" class="notebooks-grid"></div>
+        </div>
+
+        <div class="form-section">
+            <h3>4. Notion-Ziel konfigurieren</h3>
+            <form id="teams-migration-form">
+                <div class="form-group">
+                    <label for="database_id">Notion Datenbank-ID:</label>
+                    <div class="input-with-action">
+                        <input type="text" id="database_id" name="database_id"
+                               placeholder="Notion-Datenbank-ID oder Share-URL"
+                               class="form-control" required>
+                        <button type="button" id="teams-db-toggle" class="btn btn-secondary btn-sm">+ Neue DB</button>
+                    </div>
+                    <small>ID oder Notion-Share-URL eingeben &mdash; oder neue Datenbank mit passendem Schema erstellen.
+                        <a href="#" class="schema-toggle" data-target="teams-schema-panel">Schema anzeigen</a>
+                    </small>
+                    <div id="teams-schema-panel" class="schema-panel">
+                        <div class="schema-panel-inner">
+                            <div class="schema-props">
+                                <span class="schema-prop"><strong>Channel</strong> <code>title</code></span>
+                                <span class="schema-prop"><strong>Team</strong> <code>rich_text</code></span>
+                                <span class="schema-prop"><strong>ChannelType</strong> <code>select</code></span>
+                                <span class="schema-prop"><strong>ChannelId</strong> <code>rich_text</code></span>
+                                <span class="schema-prop"><strong>TeamId</strong> <code>rich_text</code></span>
+                                <span class="schema-prop"><strong>CreatedDateTime</strong> <code>date</code></span>
+                                <span class="schema-prop"><strong>LastSync</strong> <code>date</code></span>
+                                <span class="schema-prop"><strong>MessageCount</strong> <code>number</code></span>
+                                <span class="schema-prop"><strong>WebUrl</strong> <code>url</code></span>
+                            </div>
+                            <p class="schema-hint">Fehlende Properties werden automatisch erg&auml;nzt.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="teams-db-create-panel" class="db-create-panel hidden">
+                    <div class="db-create-form">
+                        <div class="form-group">
+                            <label for="teams-db-title">Datenbank-Name:</label>
+                            <input type="text" id="teams-db-title" class="form-control db-create-title"
+                                   value="Teams Channels" placeholder="z.B. Teams Channels">
+                        </div>
+                        <div class="form-group">
+                            <label for="teams-db-parent">Eltern-Seite (Notion Page-ID oder URL):</label>
+                            <input type="text" id="teams-db-parent" class="form-control db-create-parent"
+                                   placeholder="Notion-Seiten-ID oder Share-URL">
+                            <small>Die Seite, unter der die neue Datenbank erstellt wird.</small>
+                        </div>
+                        <button type="button" class="btn btn-primary db-create-btn">Datenbank erstellen</button>
+                    </div>
+                </div>
+
+                <div class="schema-panel" style="max-height: none; padding: 12px; background: #fff7ed; border: 1px solid #fdba74; margin-top: 12px;">
+                    <p style="margin: 0; color: #9a3412;">
+                        <strong>&#9888;&nbsp;Voraussetzung:</strong>
+                        Der eingeloggte Benutzer braucht eine <strong>Microsoft&nbsp;365-Lizenz mit Teams</strong>
+                        (z.&nbsp;B. M365 Business Basic/Standard, E3, E5). Dedizierte Admin-Accounts
+                        ohne zugewiesene Lizenz erhalten beim Lesen der Channel-Messages
+                        eine <code>403&nbsp;Forbidden</code>-Antwort
+                        (&bdquo;Failed to get license information for the user&ldquo;).
+                        Im Zweifel mit einem regul&auml;ren Benutzer-Account einloggen.
+                    </p>
+                </div>
+
+                <div class="action-row">
+                    <button type="submit" id="teams-submit-btn" class="btn btn-success btn-large">Migration starten</button>
+                    <button type="button" id="teams-stop-btn" class="btn btn-danger hidden">Migration stoppen</button>
+                    <span id="teams-phase" class="phase-label hidden">Initialisiere...</span>
+                </div>
+            </form>
+
+            <div id="teams-progress-section" class="progress-inline hidden">
+                <div class="progress-bar">
+                    <div id="teams-progress" class="progress-fill" style="width: 0%">0%</div>
+                </div>
+                <div id="teams-status-text" class="status-text">Warte auf Start...</div>
+            </div>
+        </div>
+
+        <div id="teams-log-section" class="hidden">
+            <div id="teams-log-output" class="log-output"></div>
+            <div id="teams-summary" class="migration-summary hidden"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var loadTeamsBtn = document.getElementById('load-teams-btn');
+    var teamsStatus = document.getElementById('teams-status');
+    var teamsSection = document.getElementById('teams-section');
+    var teamSelect = document.getElementById('team_select');
+    var loadChannelsBtn = document.getElementById('load-channels-btn');
+    var channelsSection = document.getElementById('channels-section');
+    var channelsList = document.getElementById('channels-list');
+    var migrationForm = document.getElementById('teams-migration-form');
+    var submitBtn = document.getElementById('teams-submit-btn');
+    var progressSection = document.getElementById('teams-progress-section');
+
+    var allTeams = [];
+    var allChannels = [];
+    var selectedChannels = new Set();
+
+    // Notion-ID-Feld: URL oder rohe ID akzeptieren
+    if (window.app && window.app.bindNotionIdField) {
+        window.app.bindNotionIdField(document.getElementById('database_id'));
+    }
+    if (window.app && window.app.initDbCreatePanel) {
+        window.app.initDbCreatePanel(
+            document.getElementById('teams-db-toggle'),
+            document.getElementById('teams-db-create-panel'),
+            'teams',
+            document.getElementById('database_id')
+        );
+    }
+
+    // URL-Prefill (z. B. von Overview-Dashboard: ?team_id=...&channel_id=...)
+    var urlParams = new URLSearchParams(window.location.search);
+    var prefillTeamId = urlParams.get('team_id');
+    var prefillChannelId = urlParams.get('channel_id');
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text || '';
+        return div.innerHTML;
+    }
+
+    // ------- Schritt 1: Teams laden -------
+    async function loadTeams() {
+        loadTeamsBtn.disabled = true;
+        loadTeamsBtn.textContent = 'Lade...';
+        teamsStatus.textContent = 'Lade Teams...';
+
+        try {
+            var resp = await fetch('/api/teams/list');
+            var data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Unbekannter Fehler');
+
+            allTeams = data.teams || [];
+            teamSelect.innerHTML = '';
+            allTeams.forEach(function(t) {
+                var opt = document.createElement('option');
+                opt.value = t.id;
+                opt.textContent = t.displayName + '  (' + t.id.slice(0, 8) + '…)';
+                teamSelect.appendChild(opt);
+            });
+
+            teamsSection.classList.remove('hidden');
+            teamsStatus.textContent = allTeams.length + ' Team(s) gefunden';
+
+            if (prefillTeamId) {
+                teamSelect.value = prefillTeamId;
+                if (teamSelect.value) {
+                    loadChannels();
+                }
+            }
+        } catch (e) {
+            teamsStatus.textContent = 'Fehler: ' + e.message;
+            window.app && window.app.showToast && window.app.showToast(e.message, 'error');
+        } finally {
+            loadTeamsBtn.disabled = false;
+            loadTeamsBtn.textContent = 'Teams laden';
+        }
+    }
+
+    loadTeamsBtn.addEventListener('click', loadTeams);
+
+    // ------- Schritt 2: Channels laden -------
+    async function loadChannels() {
+        var teamId = teamSelect.value;
+        if (!teamId) return;
+
+        loadChannelsBtn.disabled = true;
+        loadChannelsBtn.textContent = 'Lade...';
+
+        try {
+            var resp = await fetch('/api/teams/' + encodeURIComponent(teamId) + '/channels');
+            var data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Unbekannter Fehler');
+
+            allChannels = data.channels || [];
+            renderChannels(allChannels);
+            channelsSection.classList.remove('hidden');
+
+            if (prefillChannelId) {
+                selectedChannels = new Set([prefillChannelId]);
+                renderChannels(allChannels);
+                prefillChannelId = null;
+            }
+        } catch (e) {
+            window.app && window.app.showToast && window.app.showToast('Channels: ' + e.message, 'error');
+        } finally {
+            loadChannelsBtn.disabled = false;
+            loadChannelsBtn.textContent = 'Channels laden';
+        }
+    }
+
+    loadChannelsBtn.addEventListener('click', loadChannels);
+
+    function renderChannels(channels) {
+        channelsList.innerHTML = '';
+        channels.forEach(function(c) {
+            var card = document.createElement('div');
+            card.className = 'notebook-card';
+            var checked = selectedChannels.has(c.id) ? 'checked' : '';
+            card.innerHTML =
+                '<input type="checkbox" id="ch_' + c.id + '" value="' + c.id + '" ' + checked + '>' +
+                '<label for="ch_' + c.id + '">' +
+                    '<strong>' + escapeHtml(c.displayName) + '</strong>' +
+                    '<small>' + escapeHtml(c.membershipType || 'standard') + '</small>' +
+                '</label>';
+            channelsList.appendChild(card);
+            var cb = card.querySelector('input');
+            cb.addEventListener('change', function(e) {
+                if (e.target.checked) selectedChannels.add(c.id);
+                else selectedChannels.delete(c.id);
+            });
+        });
+    }
+
+    document.getElementById('select-all-channels').addEventListener('click', function() {
+        allChannels.forEach(function(c) { selectedChannels.add(c.id); });
+        renderChannels(allChannels);
+    });
+
+    document.getElementById('deselect-all-channels').addEventListener('click', function() {
+        selectedChannels.clear();
+        renderChannels(allChannels);
+    });
+
+    // ------- Schritt 4: Migration starten -------
+    migrationForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        var teamId = teamSelect.value;
+        if (!teamId) {
+            window.app && window.app.showToast && window.app.showToast('Bitte Team auswählen.', 'error');
+            return;
+        }
+
+        var dbField = document.getElementById('database_id');
+        var databaseId = window.app && window.app.extractNotionId
+            ? window.app.extractNotionId(dbField.value)
+            : dbField.value.trim();
+
+        var channelIds = Array.from(selectedChannels);
+        // Leere Liste = alle Channels migrieren
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Migration laeuft...';
+        progressSection.classList.remove('hidden');
+        document.getElementById('teams-log-section').classList.remove('hidden');
+
+        var phaseLabel = document.getElementById('teams-phase');
+        phaseLabel.classList.remove('hidden', 'phase-done', 'phase-error', 'phase-cancelled');
+        phaseLabel.textContent = 'Initialisiere...';
+
+        var bar = document.getElementById('teams-progress');
+        bar.style.width = '0%';
+        bar.textContent = '0%';
+        bar.classList.remove('progress-complete');
+        document.getElementById('teams-status-text').textContent = 'Warte auf Start...';
+        document.getElementById('teams-log-output').innerHTML = '';
+        document.getElementById('teams-summary').innerHTML = '';
+        document.getElementById('teams-summary').classList.add('hidden');
+
+        try {
+            var resp = await fetch('/api/teams/migrate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    team_id: teamId,
+                    channel_ids: channelIds,
+                    database_id: databaseId
+                })
+            });
+            var data = await resp.json();
+            if (!resp.ok) throw new Error(data.error || 'Unbekannter Fehler');
+
+            var client = new window.app.SSEMigrationClient({
+                progressBarSelector: '#teams-progress',
+                statusTextSelector: '#teams-status-text',
+                logOutputSelector: '#teams-log-output',
+                phaseSelector: '#teams-phase',
+                summarySelector: '#teams-summary',
+                stopButtonSelector: '#teams-stop-btn',
+                onComplete: function() {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Migration starten';
+                }
+            });
+            client.start(data.task_id);
+
+        } catch (e) {
+            window.app && window.app.showToast && window.app.showToast(e.message, 'error');
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Migration starten';
+        }
+    });
+
+    // Auto-Load wenn von Overview gekommen
+    if (prefillTeamId) {
+        loadTeams();
+    }
+});
+</script>
+{% endblock %}

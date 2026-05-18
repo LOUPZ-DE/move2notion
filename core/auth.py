@@ -30,7 +30,13 @@ class AuthConfig:
 
     def __post_init__(self):
         if self.ms_scopes is None:
-            self.ms_scopes = ["Notes.Read.All", "Sites.Read.All"]
+            self.ms_scopes = [
+                "Notes.Read.All",
+                "Sites.Read.All",
+                "ChannelMessage.Read.All",
+                "Channel.ReadBasic.All",
+                "Team.ReadBasic.All",
+            ]
 
 
 class MicrosoftAuthenticator:
@@ -122,22 +128,36 @@ class MicrosoftWebAuthenticator:
         )
         self._token_cache = {}  # Session-basierter Cache (session_id -> token)
 
-    def get_auth_url(self, session_id: str, state: Optional[str] = None) -> str:
-        """URL für Login-Weiterleitung generieren."""
+    def get_auth_url(self, session_id: str, state: Optional[str] = None,
+                     prompt: Optional[str] = None) -> str:
+        """URL für Login-Weiterleitung generieren.
+
+        Args:
+            session_id: Session-ID (wird als state genutzt, falls keine state angegeben).
+            state: Optionaler OAuth-state-Parameter.
+            prompt: Optionaler OAuth-prompt-Parameter (z. B. "consent" oder
+                "select_account"). Wird gesetzt, wenn neue Scopes nach einer
+                App-Registration-Aenderung consent-pflichtig werden — ohne diesen
+                Parameter erkennt Microsoft den vorhandenen Login per SSO und
+                liefert einen Token mit den alten Scopes.
+        """
         if state is None:
             state = session_id
-        
-        scopes = self.config.ms_scopes or ["Notes.Read.All", "Sites.Read.All"]
-        auth_url = self.app.get_authorization_request_url(
-            scopes=scopes,
-            redirect_uri=self.config.redirect_uri,
-            state=state
-        )
+
+        scopes = self.config.ms_scopes
+        kwargs = {
+            "scopes": scopes,
+            "redirect_uri": self.config.redirect_uri,
+            "state": state,
+        }
+        if prompt:
+            kwargs["prompt"] = prompt
+        auth_url = self.app.get_authorization_request_url(**kwargs)
         return auth_url
 
     def acquire_token_by_auth_code(self, code: str, session_id: str) -> Dict[str, Any]:
         """Token über Authorization Code erwerben."""
-        scopes = self.config.ms_scopes or ["Notes.Read.All", "Sites.Read.All"]
+        scopes = self.config.ms_scopes
         result = self.app.acquire_token_by_authorization_code(
             code=code,
             scopes=scopes,
@@ -160,7 +180,7 @@ class MicrosoftWebAuthenticator:
         
         # Versuche Token zu refreshen falls vorhanden
         if "refresh_token" in token_data:
-            scopes = self.config.ms_scopes or ["Notes.Read.All", "Sites.Read.All"]
+            scopes = self.config.ms_scopes
             result = self.app.acquire_token_by_refresh_token(
                 refresh_token=token_data["refresh_token"],
                 scopes=scopes
@@ -344,7 +364,10 @@ class AuthManager:
             config = AuthConfig(
                 ms_client_id=os.getenv("MS_CLIENT_ID", ""),
                 ms_tenant_id=os.getenv("MS_TENANT_ID", "consumers"),
-                ms_scopes=[s.strip() for s in os.getenv("MS_GRAPH_SCOPES", "Notes.Read.All,Sites.Read.All").split(",")],
+                ms_scopes=[s.strip() for s in os.getenv(
+                    "MS_GRAPH_SCOPES",
+                    "Notes.Read.All,Sites.Read.All,ChannelMessage.Read.All,Channel.ReadBasic.All,Team.ReadBasic.All"
+                ).split(",")],
                 notion_token=os.getenv("NOTION_TOKEN", ""),
                 ms_client_secret=os.getenv("MS_CLIENT_SECRET"),
                 redirect_uri=os.getenv("FLASK_REDIRECT_URI", "http://localhost:8080/callback"),

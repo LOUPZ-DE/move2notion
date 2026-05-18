@@ -103,9 +103,13 @@ web/
 | `/api/onenote/migrate` | POST | OneNote-Migration starten (Background-Thread) |
 | `/planner` | GET | Planner-Dashboard |
 | `/api/planner/migrate` | POST | Planner-Migration starten (Background-Thread) |
+| `/teams` | GET | Teams-Dashboard |
+| `/api/teams/list` | GET | Teams des angemeldeten Users |
+| `/api/teams/<team_id>/channels` | GET | Channels eines Teams |
+| `/api/teams/migrate` | POST | Teams-Migration starten (Background-Thread) |
 | `/overview` | GET | Overview-Dashboard |
 | `/api/overview/groups` | GET | Microsoft 365-Gruppen auflisten |
-| `/api/overview/groups/<id>/details` | GET | Notebooks + Plans einer Gruppe |
+| `/api/overview/groups/<id>/details` | GET | Notebooks + Plans + Teams-Channels einer Gruppe |
 | `/api/tasks/<id>/events` | GET | SSE-Stream für Live-Fortschritt |
 | `/api/tasks/<id>/status` | GET | Task-Status (Fallback für Reconnect) |
 
@@ -205,11 +209,23 @@ Die gleichen `core/ms_graph_client.py` und `core/notion_client.py` Module werden
 
 ![Planner Migration Interface](Move2Notion_screen_planner.png)
 
+### Teams-Migration
+
+1. **"Teams laden"** klicken — listet alle Teams, in denen der User Mitglied ist
+2. **Team auswählen** und **"Channels laden"** klicken
+3. **Channels auswählen** (Multi-Select-Karten, Buttons "Alle" / "Keine")
+4. **Notion-Datenbank-ID** eingeben (oder neue DB anlegen)
+5. **Migration starten** — pro Channel wird eine Notion-Page erzeugt; bei Wiederholung wird die Page komplett neu aufgebaut (Rebuild)
+6. Pre-fill-Parameter: `?team_id=<id>&channel_id=<id>` aus Overview verlinkt
+
+> **Wichtig:** Das Lesen der Teams-Messages ist **Pay-per-API** — Tenant-Admin muss die Lizenz im M365 Admin Center buchen. Reines Channel-Listing (im Overview oder beim Picker) ist gratis. Siehe [TEAMS.md](TEAMS.md).
+
 ### Overview-Dashboard
 
 1. **"Gruppen laden"** klicken — listet alle Microsoft 365-Gruppen im Tenant
-2. **"Details laden"** pro Gruppe — ruft OneNote-Notebooks und Planner-Pläne ab
-3. **IDs kopieren** — Notebook- und Plan-IDs können direkt für die Migration verwendet werden
+2. **"Details laden"** pro Gruppe — ruft OneNote-Notebooks, Planner-Pläne und Teams-Channels ab
+3. **IDs kopieren** — Notebook-, Plan- und Channel-IDs können direkt für die Migration verwendet werden
+4. **"Migrieren →"** pro Channel oder **"Alle →"** im Spaltenkopf öffnet die Teams-Migration mit Vorauswahl
 
 Das Overview-Dashboard nutzt Lazy-Loading: Gruppen werden zuerst geladen, Details pro Gruppe werden erst auf Klick abgerufen. Dies ermöglicht eine schnelle Übersicht auch bei großen Tenants.
 

@@ -4,18 +4,19 @@
 
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC_BY--NC_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)
-[![Changelog](https://img.shields.io/badge/Changelog-v0.9.10-orange.svg)](CHANGELOG.md)
+[![Changelog](https://img.shields.io/badge/Changelog-v0.10.0-orange.svg)](CHANGELOG.md)
 
 ---
 
 ## 🚀 Was ist das?
 
-Diese Suite migriert **Daten aus Microsoft 365** (Planner, OneNote) in **strukturierte Notion-Datenbanken**.
+Diese Suite migriert **Daten aus Microsoft 365** (Planner, OneNote, Teams) in **strukturierte Notion-Datenbanken**.
 
 - ✅ **Automatisiert**: Keine manuellen Copy-Paste-Arbeiten
 - ✅ **Modular**: Einfach neue Quellen hinzufügen
 - ✅ **Idempotent**: Sichere Resume-Funktionalität
 - ✅ **Rich-Content**: Bilder, Tabellen, To-Dos werden korrekt importiert
+- 💬 **Teams-Channels**: Komplette Verläufe inkl. Replies, Reactions, @Mentions und Anhänge
 
 ---
 
@@ -74,9 +75,10 @@ python app.py
 
 **Features:**
 - 🔐 **Microsoft OAuth-Authentifizierung**
-- 🔍 **Overview-Dashboard** mit Gruppen, Notebooks und Planner-Plänen
+- 🔍 **Overview-Dashboard** mit Gruppen, Notebooks, Planner-Plänen und Teams-Channels
 - 📓 **OneNote-Migration** mit grafischer Notebook-Auswahl
 - 📋 **Planner-Migration** mit Status-Anzeige
+- 💬 **Teams-Migration** mit Team- und Channel-Picker
 - 📊 **Live-Fortschrittsanzeige** während der Migration
 - 🎨 **Responsive UI** für Desktop und Mobile
 
@@ -163,6 +165,37 @@ python -m tools.onenote_migration.cli \
 - **Zeitfilter**: `--since 2025-01-01` für inkrementelle Imports
 
 📖 [Details](documentation/ONENOTE.md)
+
+---
+
+### 4. **Teams → Notion** (CLI)
+
+Migration von Microsoft Teams Channels mit allen Beiträgen, Replies, Reactions, @Mentions und Anhängen.
+
+```bash
+# Alle Channels eines Teams migrieren
+python -m tools.teams_migration.cli \
+  --team-id "TEAM_ID" \
+  --database-id "NOTION_DATABASE_ID"
+
+# Nur einen bestimmten Channel
+python -m tools.teams_migration.cli \
+  --team-id "TEAM_ID" \
+  --channel-id "CHANNEL_ID" \
+  --database-id "NOTION_DATABASE_ID"
+```
+
+**Features:**
+- **Pro Channel eine Notion-Page** mit chronologischem Chat-Verlauf
+- **Toggle-Bloecke pro Beitrag** (Header: Absender · Datum · Vorschau)
+- **Replies** als nested Toggles unter dem Parent-Beitrag
+- **Reactions, @Mentions, Inline-Bilder** (hostedContents werden hochgeladen)
+- **Datei-Anhänge** als Bookmark-Blocks (kein Re-Upload)
+- **Rebuild-Idempotenz**: Bei Wiederholung wird die Channel-Page komplett neu aufgebaut
+
+> **⚠ Voraussetzung**: Der eingeloggte Benutzer braucht eine **M365-Lizenz mit Teams** (z. B. Business Basic, E3, E5). Dedizierte Admin-Accounts ohne zugewiesene Lizenz erhalten `403 Forbidden — Failed to get license information for the user`. Pay-per-API gilt nur für Application-Only-Zugriffe und ist hier nicht relevant.
+
+📖 [Details](documentation/TEAMS.md)
 
 ---
 
